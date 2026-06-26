@@ -4,7 +4,7 @@
 // only falls back to the cache when the network is unavailable (offline).
 // On a new deploy, bump CACHE_VERSION (kept in sync with version.js).
 
-const CACHE_VERSION = '1.2.1';
+const CACHE_VERSION = '1.2.0';
 const CACHE_NAME = `shelf-cache-v${CACHE_VERSION}`;
 
 // Core files that make the app usable offline.
