@@ -37,11 +37,15 @@
   }
   function findBook(key) { return state.books.find((b) => b.key === key); }
 
-  // Books saved before "Want to Read" existed are treated as read.
-  function bookStatus(b) { return b.status === 'want' ? 'want' : 'read'; }
-  // A comparable timestamp for "recent" sorting (finished date wins).
+  // Status is one of 'want' | 'reading' | 'read'. Books saved before these
+  // existed (no status field) are treated as read.
+  function bookStatus(b) {
+    return b.status === 'want' || b.status === 'reading' ? b.status : 'read';
+  }
+  // A comparable timestamp for "recent" sorting: finished, else started, else added.
   function bookTime(b) {
-    if (b.finishedAt) { const t = Date.parse(b.finishedAt); if (!isNaN(t)) return t; }
+    const d = b.finishedAt || b.startedAt;
+    if (d) { const t = Date.parse(d); if (!isNaN(t)) return t; }
     return b.addedAt || 0;
   }
   const isoOf = (d) => {
@@ -407,6 +411,7 @@
   /* ---------- Shelf stats line ---------- */
   function paintStats(node) {
     const read = state.books.filter((b) => bookStatus(b) === 'read');
+    const reading = state.books.filter((b) => bookStatus(b) === 'reading');
     const want = state.books.filter((b) => bookStatus(b) === 'want');
     const rated = read.filter((b) => b.rating > 0);
     if (state.books.length === 0) { node.textContent = ''; return; }
@@ -416,6 +421,7 @@
       const avg = rated.reduce((s, b) => s + b.rating, 0) / rated.length;
       parts.push(`${avg.toFixed(1)}★ average`);
     }
+    if (reading.length) parts.push(`${reading.length} reading`);
     if (want.length) parts.push(`${want.length} to read`);
     node.textContent = parts.join('  ·  ');
   }
@@ -433,6 +439,7 @@
 
     const filters = [
       ['all', 'All'],
+      ['reading', 'Reading'],
       ['read', 'Read'],
       ['want', 'Want to Read']
     ];
@@ -478,7 +485,7 @@
 
     let books = state.books.slice();
     const f = state.ui.filter;
-    if (f === 'read' || f === 'want') books = books.filter((b) => bookStatus(b) === f);
+    if (f === 'read' || f === 'want' || f === 'reading') books = books.filter((b) => bookStatus(b) === f);
 
     const titleKey = (b) => (b.title || '').toLowerCase();
     const authorKey = (b) => {
@@ -497,9 +504,13 @@
       node.appendChild(el(`
         <div class="empty">
           <div class="glyph">${ICON.book}</div>
-          <h3>${f === 'want' ? 'Nothing on your list yet' : 'No books here'}</h3>
+          <h3>${f === 'want' ? 'Nothing on your list yet'
+            : f === 'reading' ? 'Not reading anything yet'
+            : 'No books here'}</h3>
           <p>${f === 'want'
             ? 'Find a book and mark it “Want to Read” to save it for later.'
+            : f === 'reading'
+            ? 'Open a book and mark it “Reading” to track it here.'
             : 'Try a different filter.'}</p>
         </div>
       `));
@@ -516,10 +527,14 @@
     card.appendChild(coverEl(book, 'M'));
     card.appendChild(el(`<div class="b-title">${esc(book.title)}</div>`));
     card.appendChild(el(`<div class="b-author">${esc(authorLine(book.author))}</div>`));
-    if (bookStatus(book) === 'want') {
-      const w = el(`<div class="b-want">${ICON.bookmark} Want to read</div>`);
-      w.querySelector('svg') && (w.querySelector('svg').style.width = '11px');
-      card.appendChild(w);
+    const status = bookStatus(book);
+    if (status === 'want') {
+      card.appendChild(el(`<div class="b-want">${ICON.bookmark} Want to read</div>`));
+    } else if (status === 'reading') {
+      card.appendChild(el(`<div class="b-reading">${ICON.book} Reading</div>`));
+      if (book.startedAt) {
+        card.appendChild(el(`<div class="b-author" style="margin-top:3px">Since ${esc(formatDate(book.startedAt))}</div>`));
+      }
     } else if (book.rating) {
       card.appendChild(el(`<div class="b-mini-stars">${'★'.repeat(book.rating)}${'☆'.repeat(5 - book.rating)}</div>`));
       if (book.finishedAt) {
@@ -643,9 +658,7 @@
     const saved = findBook(book.key);
     const merged = saved ? Object.assign({}, book, saved) : Object.assign({}, book);
     let rating = merged.rating || 0;
-    let currentStatus = bookStatus(merged);  // 'read' | 'want'
-
-    const isWant = currentStatus === 'want';
+    let currentStatus = bookStatus(merged);  // 'want' | 'reading' | 'read'
 
     const view = el(`
       <div>
@@ -666,25 +679,33 @@
 
         <div class="rate-block">
           <label>Status</label>
-          <div class="status-toggle" id="status-toggle">
-            <button class="status-btn ${!isWant ? 'on' : ''}" data-s="read">Read</button>
-            <button class="status-btn ${isWant ? 'on' : ''}" data-s="want">Want to Read</button>
+          <div class="status-toggle status-toggle-3" id="status-toggle">
+            <button class="status-btn" data-s="want">Want to Read</button>
+            <button class="status-btn" data-s="reading">Reading</button>
+            <button class="status-btn" data-s="read">Read</button>
           </div>
 
-          <div id="rate-section" style="${isWant ? 'display:none' : ''}">
+          <div id="rating-row">
             <label style="display:block;margin-top:18px">Your rating</label>
             <div class="stars" id="stars"></div>
             <textarea class="review-input" id="review"
               placeholder="Write a few thoughts about this book…">${esc(merged.review || '')}</textarea>
-            <div class="date-row">
-              <label for="finished">${ICON.calendar} Finished</label>
-              <input class="date-input" type="date" id="finished"
-                value="${esc(merged.finishedAt || todayISO())}" max="${todayISO()}" />
-            </div>
+          </div>
+
+          <div class="date-row" id="started-row">
+            <label for="started">${ICON.calendar} Started</label>
+            <input class="date-input" type="date" id="started"
+              value="${esc(merged.startedAt || '')}" max="${todayISO()}" />
+          </div>
+
+          <div class="date-row" id="finished-row">
+            <label for="finished">${ICON.calendar} Finished</label>
+            <input class="date-input" type="date" id="finished"
+              value="${esc(merged.finishedAt || '')}" max="${todayISO()}" />
           </div>
 
           <div class="detail-actions">
-            <button class="btn btn-block" id="save">${saved ? 'Update' : 'Add to Shelf'}</button>
+            <button class="btn btn-block" id="save"></button>
           </div>
         </div>
 
@@ -694,13 +715,20 @@
     `);
 
     view.querySelector('#cover-slot').appendChild(coverEl(merged, 'L'));
-    view.querySelector('#back').addEventListener('click', () =>
-      opts.fromShelf ? renderHome() : renderHome());
+    view.querySelector('#back').addEventListener('click', () => renderHome());
 
-    // On shelf badge + remove button.
+    // On-shelf badge + remove button.
+    const badgeSlot = view.querySelector('#badge-slot');
+    function paintBadge() {
+      if (!saved) { badgeSlot.innerHTML = ''; return; }
+      const map = {
+        want: `${ICON.bookmark} Want to Read`,
+        reading: `${ICON.book} Currently Reading`,
+        read: `${ICON.check} Read`
+      };
+      badgeSlot.innerHTML = `<span class="read-badge">${map[currentStatus]}</span>`;
+    }
     if (saved) {
-      const badgeLabel = isWant ? `${ICON.bookmark} Want to Read` : `${ICON.check} On your shelf`;
-      view.querySelector('#badge-slot').appendChild(el(`<span class="read-badge">${badgeLabel}</span>`));
       const remove = el('<button class="btn-text" style="color:var(--text-secondary)">Remove</button>');
       remove.addEventListener('click', () => {
         state.books = state.books.filter((b) => b.key !== merged.key);
@@ -711,14 +739,45 @@
       view.querySelector('#remove-slot').appendChild(remove);
     }
 
-    // Status toggle: show/hide the rating+review+date section.
-    const rateSection = view.querySelector('#rate-section');
+    // Show only the fields relevant to the chosen status.
+    const ratingRow = view.querySelector('#rating-row');
+    const startedRow = view.querySelector('#started-row');
+    const finishedRow = view.querySelector('#finished-row');
+    const startedInput = view.querySelector('#started');
+    const finishedInput = view.querySelector('#finished');
+    const saveBtn = view.querySelector('#save');
+
+    function applyStatus() {
+      const isWant = currentStatus === 'want';
+      const isReading = currentStatus === 'reading';
+      const isRead = currentStatus === 'read';
+
+      ratingRow.style.display = isRead ? '' : 'none';
+      startedRow.style.display = (isReading || isRead) ? '' : 'none';
+      finishedRow.style.display = isRead ? '' : 'none';
+
+      // Sensible date defaults the first time a status is chosen.
+      if ((isReading || isRead) && !startedInput.value && !merged.startedAt) {
+        startedInput.value = isReading ? todayISO() : '';
+      }
+      if (isReading && !startedInput.value) startedInput.value = todayISO();
+      if (isRead && !finishedInput.value) finishedInput.value = merged.finishedAt || todayISO();
+
+      saveBtn.textContent = saved ? 'Update'
+        : isWant ? 'Add to Want to Read'
+        : isReading ? 'Start Reading'
+        : 'Add to Shelf';
+
+      view.querySelectorAll('.status-btn').forEach((b) =>
+        b.classList.toggle('on', b.dataset.s === currentStatus));
+      paintBadge();
+    }
+
     view.querySelector('#status-toggle').addEventListener('click', (e) => {
       const btn = e.target.closest('[data-s]');
       if (!btn) return;
       currentStatus = btn.dataset.s;
-      view.querySelectorAll('.status-btn').forEach((b) => b.classList.toggle('on', b.dataset.s === currentStatus));
-      rateSection.style.display = currentStatus === 'want' ? 'none' : '';
+      applyStatus();
     });
 
     // Stars
@@ -735,11 +794,15 @@
       }
     }
     paintStars();
+    applyStatus();
 
     // Save / update
-    view.querySelector('#save').addEventListener('click', () => {
+    saveBtn.addEventListener('click', () => {
       const review = view.querySelector('#review').value.trim();
-      const finishedAt = view.querySelector('#finished').value || null;
+      const startedAt = startedInput.value || null;
+      const finishedAt = finishedInput.value || null;
+      const isRead = currentStatus === 'read';
+      const isWant = currentStatus === 'want';
       const record = {
         key: merged.key,
         title: merged.title,
@@ -748,16 +811,20 @@
         year: merged.year || null,
         subjects: merged.subjects || null,
         status: currentStatus,
-        rating: currentStatus === 'want' ? 0 : rating,
-        review: currentStatus === 'want' ? '' : review,
-        finishedAt: currentStatus === 'want' ? null : (finishedAt || merged.finishedAt || null),
+        rating: isRead ? rating : 0,
+        review: isRead ? review : '',
+        startedAt: isWant ? null : (startedAt || merged.startedAt || null),
+        finishedAt: isRead ? (finishedAt || merged.finishedAt || todayISO()) : null,
         addedAt: saved && saved.addedAt ? saved.addedAt : Date.now(),
         updatedAt: Date.now()
       };
       const idx = state.books.findIndex((b) => b.key === merged.key);
       if (idx >= 0) state.books[idx] = record; else state.books.push(record);
       saveState();
-      const msg = currentStatus === 'want' ? 'Saved to Want to Read ✓' : (saved ? 'Updated ✓' : 'Added to your shelf ✓');
+      const msg = saved ? 'Updated ✓'
+        : isWant ? 'Saved to Want to Read ✓'
+        : currentStatus === 'reading' ? 'Added to Currently Reading ✓'
+        : 'Added to your shelf ✓';
       toast(msg);
       renderHome();
     });

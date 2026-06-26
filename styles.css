@@ -684,20 +684,21 @@ input, textarea { font-family: inherit; color: inherit; }
   border-top: 5px solid var(--text-tertiary);
 }
 
-/* ---------- Want-to-read card indicator ---------- */
-.b-want {
+/* ---------- Status card indicators ---------- */
+.b-want, .b-reading {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   font-size: 11px;
   font-weight: 600;
   color: var(--accent);
   margin-top: 5px;
   letter-spacing: 0.02em;
 }
-.b-want svg { width: 11px; height: 11px; }
+.b-want svg, .b-reading svg { width: 11px; height: 11px; }
+.b-reading { color: var(--star); }
 
-/* ---------- Status toggle (Read / Want to Read) ---------- */
+/* ---------- Status toggle (Want / Reading / Read) ---------- */
 .status-toggle {
   display: flex;
   gap: 0;
@@ -707,6 +708,9 @@ input, textarea { font-family: inherit; color: inherit; }
   box-shadow: inset 0 0 0 1px var(--separator);
   margin-top: 14px;
   width: fit-content;
+}
+.status-toggle-3 {
+  width: 100%;        /* three segments: stretch full width */
 }
 .status-btn {
   border: none;
@@ -718,6 +722,12 @@ input, textarea { font-family: inherit; color: inherit; }
   color: var(--text-secondary);
   transition: background .18s ease, color .18s ease, box-shadow .18s ease;
   white-space: nowrap;
+}
+.status-toggle-3 .status-btn {
+  flex: 1;
+  padding: 9px 6px;
+  font-size: 13.5px;
+  text-align: center;
 }
 .status-btn.on {
   background: var(--surface);
