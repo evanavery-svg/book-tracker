@@ -12,20 +12,38 @@
   const COVER = 'https://covers.openlibrary.org/b/id';
 
   /* ---------- State ---------- */
-  const defaultState = { name: '', books: [] };
+  const defaultState = { name: '', books: [], ui: { filter: 'all', sort: 'recent' } };
   let state = loadState();
 
   function loadState() {
     try {
       const raw = localStorage.getItem(STORE_KEY);
-      if (raw) return Object.assign({}, defaultState, JSON.parse(raw));
+      if (raw) {
+        const s = Object.assign({}, defaultState, JSON.parse(raw));
+        s.ui = Object.assign({}, defaultState.ui, s.ui);
+        return s;
+      }
     } catch (_) {}
-    return Object.assign({}, defaultState);
+    return JSON.parse(JSON.stringify(defaultState));
   }
   function saveState() {
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
   }
   function findBook(key) { return state.books.find((b) => b.key === key); }
+
+  // Books saved before "Want to Read" existed are treated as read.
+  function bookStatus(b) { return b.status === 'want' ? 'want' : 'read'; }
+  // A comparable timestamp for "recent" sorting (finished date wins).
+  function bookTime(b) {
+    if (b.finishedAt) { const t = Date.parse(b.finishedAt); if (!isNaN(t)) return t; }
+    return b.addedAt || 0;
+  }
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+  function formatDate(iso) {
+    const t = Date.parse(iso);
+    if (isNaN(t)) return '';
+    return new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  }
 
   /* ---------- Tiny helpers ---------- */
   const el = (html) => {
@@ -48,7 +66,9 @@
     share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M5 12v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
     check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg>',
     book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 4.5V21.5"/></svg>',
-    offline: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a7 7 0 0 1 11-2"/><path d="M8.5 16.5a4 4 0 0 1 6 0"/><circle cx="12" cy="20" r="0.6" fill="currentColor"/><path d="M3 3l18 18"/></svg>'
+    offline: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a7 7 0 0 1 11-2"/><path d="M8.5 16.5a4 4 0 0 1 6 0"/><circle cx="12" cy="20" r="0.6" fill="currentColor"/><path d="M3 3l18 18"/></svg>',
+    calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 9.5h17M8 3v3.5M16 3v3.5"/></svg>',
+    bookmark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h14a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>'
   };
   const icon = (name) => `<span class="ico">${ICON[name] || ''}</span>`;
 
@@ -152,6 +172,8 @@
         </div>
 
         <h2 class="section-title">Your Shelf</h2>
+        <p class="shelf-stats" id="stats"></p>
+        <div class="shelf-controls" id="controls"></div>
         <div id="shelf"></div>
       </div>
     `);
@@ -169,24 +191,118 @@
       timer = setTimeout(() => renderSearch(q, search.value), 450);
     });
 
-    const shelf = view.querySelector('#shelf');
+    paintStats(view.querySelector('#stats'));
+    buildControls(view.querySelector('#controls'), view.querySelector('#shelf'));
+    paintShelf(view.querySelector('#shelf'));
+
+    setView(view);
+  }
+
+  /* ---------- Shelf stats line ---------- */
+  function paintStats(node) {
+    const read = state.books.filter((b) => bookStatus(b) === 'read');
+    const want = state.books.filter((b) => bookStatus(b) === 'want');
+    const rated = read.filter((b) => b.rating > 0);
+    if (state.books.length === 0) { node.textContent = ''; return; }
+    const parts = [];
+    parts.push(`${read.length} ${read.length === 1 ? 'book' : 'books'} read`);
+    if (rated.length) {
+      const avg = rated.reduce((s, b) => s + b.rating, 0) / rated.length;
+      parts.push(`${avg.toFixed(1)}★ average`);
+    }
+    if (want.length) parts.push(`${want.length} to read`);
+    node.textContent = parts.join('  ·  ');
+  }
+
+  /* ---------- Filter + sort controls ---------- */
+  const SORTS = [
+    ['recent', 'Recently added'],
+    ['rating', 'Highest rated'],
+    ['title', 'Title'],
+    ['author', 'Author']
+  ];
+  function buildControls(node, shelfNode) {
+    node.innerHTML = '';
+    if (state.books.length === 0) return;
+
+    const filters = [
+      ['all', 'All'],
+      ['read', 'Read'],
+      ['want', 'Want to Read']
+    ];
+    const chips = el('<div class="chips"></div>');
+    filters.forEach(([key, label]) => {
+      const chip = el(`<button class="chip ${state.ui.filter === key ? 'on' : ''}">${label}</button>`);
+      chip.addEventListener('click', () => {
+        state.ui.filter = key; saveState();
+        chips.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
+        chip.classList.add('on');
+        paintShelf(shelfNode);
+      });
+      chips.appendChild(chip);
+    });
+
+    const sortWrap = el('<div class="sort-wrap"></div>');
+    const options = SORTS.map(([k, l]) =>
+      `<option value="${k}" ${state.ui.sort === k ? 'selected' : ''}>${l}</option>`).join('');
+    const select = el(`<select class="sort-select" aria-label="Sort books">${options}</select>`);
+    select.addEventListener('change', () => {
+      state.ui.sort = select.value; saveState();
+      paintShelf(shelfNode);
+    });
+    sortWrap.appendChild(select);
+
+    node.appendChild(chips);
+    node.appendChild(sortWrap);
+  }
+
+  /* ---------- Shelf grid (filtered + sorted) ---------- */
+  function paintShelf(node) {
+    node.innerHTML = '';
     if (state.books.length === 0) {
-      shelf.appendChild(el(`
+      node.appendChild(el(`
         <div class="empty">
           <div class="glyph">${ICON.book}</div>
           <h3>No books yet</h3>
           <p>Search above to find a book you've read and add it to your shelf.</p>
         </div>
       `));
-    } else {
-      const grid = el('<div class="book-grid"></div>');
-      // Most recently added first.
-      [...state.books].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
-        .forEach((b) => grid.appendChild(shelfCard(b)));
-      shelf.appendChild(grid);
+      return;
     }
 
-    setView(view);
+    let books = state.books.slice();
+    const f = state.ui.filter;
+    if (f === 'read' || f === 'want') books = books.filter((b) => bookStatus(b) === f);
+
+    const titleKey = (b) => (b.title || '').toLowerCase();
+    const authorKey = (b) => {
+      const a = Array.isArray(b.author) ? b.author[0] : b.author;
+      return (a || '￿').toLowerCase(); // unknown authors sort last
+    };
+    const sorters = {
+      recent: (a, b) => bookTime(b) - bookTime(a),
+      rating: (a, b) => (b.rating || 0) - (a.rating || 0) || bookTime(b) - bookTime(a),
+      title: (a, b) => titleKey(a).localeCompare(titleKey(b)),
+      author: (a, b) => authorKey(a).localeCompare(authorKey(b)) || titleKey(a).localeCompare(titleKey(b))
+    };
+    books.sort(sorters[state.ui.sort] || sorters.recent);
+
+    if (books.length === 0) {
+      node.appendChild(el(`
+        <div class="empty">
+          <div class="glyph">${ICON.book}</div>
+          <h3>${f === 'want' ? 'Nothing on your list yet' : 'No books here'}</h3>
+          <p>${f === 'want'
+            ? 'Find a book and mark it “Want to Read” to save it for later.'
+            : 'Try a different filter.'}</p>
+        </div>
+      `));
+      return;
+    }
+
+    const grid = el('<div class="book-grid"></div>');
+    books.forEach((b) => grid.appendChild(shelfCard(b)));
+    node.appendChild(grid);
   }
 
   function shelfCard(book) {
@@ -194,8 +310,15 @@
     card.appendChild(coverEl(book, 'M'));
     card.appendChild(el(`<div class="b-title">${esc(book.title)}</div>`));
     card.appendChild(el(`<div class="b-author">${esc(authorLine(book.author))}</div>`));
-    if (book.rating) {
+    if (bookStatus(book) === 'want') {
+      const w = el(`<div class="b-want">${ICON.bookmark} Want to read</div>`);
+      w.querySelector('svg') && (w.querySelector('svg').style.width = '11px');
+      card.appendChild(w);
+    } else if (book.rating) {
       card.appendChild(el(`<div class="b-mini-stars">${'★'.repeat(book.rating)}${'☆'.repeat(5 - book.rating)}</div>`));
+      if (book.finishedAt) {
+        card.appendChild(el(`<div class="b-author" style="margin-top:3px">${esc(formatDate(book.finishedAt))}</div>`));
+      }
     }
     card.addEventListener('click', () => renderDetail(book, { fromShelf: true }));
     return card;
@@ -314,6 +437,9 @@
     const saved = findBook(book.key);
     const merged = saved ? Object.assign({}, book, saved) : Object.assign({}, book);
     let rating = merged.rating || 0;
+    let currentStatus = bookStatus(merged);  // 'read' | 'want'
+
+    const isWant = currentStatus === 'want';
 
     const view = el(`
       <div>
@@ -333,10 +459,24 @@
         </div>
 
         <div class="rate-block">
-          <label>Your rating</label>
-          <div class="stars" id="stars"></div>
-          <textarea class="review-input" id="review"
-            placeholder="Write a few thoughts about this book…">${esc(merged.review || '')}</textarea>
+          <label>Status</label>
+          <div class="status-toggle" id="status-toggle">
+            <button class="status-btn ${!isWant ? 'on' : ''}" data-s="read">Read</button>
+            <button class="status-btn ${isWant ? 'on' : ''}" data-s="want">Want to Read</button>
+          </div>
+
+          <div id="rate-section" style="${isWant ? 'display:none' : ''}">
+            <label style="display:block;margin-top:18px">Your rating</label>
+            <div class="stars" id="stars"></div>
+            <textarea class="review-input" id="review"
+              placeholder="Write a few thoughts about this book…">${esc(merged.review || '')}</textarea>
+            <div class="date-row">
+              <label for="finished">${ICON.calendar} Finished</label>
+              <input class="date-input" type="date" id="finished"
+                value="${esc(merged.finishedAt || '')}" max="${todayISO()}" />
+            </div>
+          </div>
+
           <div class="detail-actions">
             <button class="btn btn-block" id="save">${saved ? 'Update' : 'Add to Shelf'}</button>
           </div>
@@ -349,12 +489,13 @@
 
     view.querySelector('#cover-slot').appendChild(coverEl(merged, 'L'));
     view.querySelector('#back').addEventListener('click', () =>
-      opts.fromShelf ? renderHome() : window.history.length ? renderHomeOrBack() : renderHome());
+      opts.fromShelf ? renderHome() : renderHome());
 
-    // Read badge + remove button when already on shelf.
+    // On shelf badge + remove button.
     if (saved) {
-      view.querySelector('#badge-slot').appendChild(el(`<span class="read-badge">${ICON.check} On your shelf</span>`));
-      const remove = el('<button class="btn-text" id="remove" style="color:var(--text-secondary)">Remove</button>');
+      const badgeLabel = isWant ? `${ICON.bookmark} Want to Read` : `${ICON.check} On your shelf`;
+      view.querySelector('#badge-slot').appendChild(el(`<span class="read-badge">${badgeLabel}</span>`));
+      const remove = el('<button class="btn-text" style="color:var(--text-secondary)">Remove</button>');
       remove.addEventListener('click', () => {
         state.books = state.books.filter((b) => b.key !== merged.key);
         saveState();
@@ -364,6 +505,16 @@
       view.querySelector('#remove-slot').appendChild(remove);
     }
 
+    // Status toggle: show/hide the rating+review+date section.
+    const rateSection = view.querySelector('#rate-section');
+    view.querySelector('#status-toggle').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-s]');
+      if (!btn) return;
+      currentStatus = btn.dataset.s;
+      view.querySelectorAll('.status-btn').forEach((b) => b.classList.toggle('on', b.dataset.s === currentStatus));
+      rateSection.style.display = currentStatus === 'want' ? 'none' : '';
+    });
+
     // Stars
     const starsWrap = view.querySelector('#stars');
     function paintStars() {
@@ -371,7 +522,7 @@
       for (let i = 1; i <= 5; i++) {
         const s = el(`<button class="star ${i <= rating ? 'on' : ''}" aria-label="${i} star">★</button>`);
         s.addEventListener('click', () => {
-          rating = (rating === i) ? 0 : i;  // tap same star again to clear
+          rating = (rating === i) ? 0 : i;
           paintStars();
         });
         starsWrap.appendChild(s);
@@ -382,6 +533,7 @@
     // Save / update
     view.querySelector('#save').addEventListener('click', () => {
       const review = view.querySelector('#review').value.trim();
+      const finishedAt = view.querySelector('#finished').value || null;
       const record = {
         key: merged.key,
         title: merged.title,
@@ -389,15 +541,18 @@
         coverId: merged.coverId || null,
         year: merged.year || null,
         subjects: merged.subjects || null,
-        rating,
-        review,
+        status: currentStatus,
+        rating: currentStatus === 'want' ? 0 : rating,
+        review: currentStatus === 'want' ? '' : review,
+        finishedAt: currentStatus === 'want' ? null : (finishedAt || merged.finishedAt || null),
         addedAt: saved && saved.addedAt ? saved.addedAt : Date.now(),
         updatedAt: Date.now()
       };
       const idx = state.books.findIndex((b) => b.key === merged.key);
       if (idx >= 0) state.books[idx] = record; else state.books.push(record);
       saveState();
-      toast(saved ? 'Updated ✓' : 'Added to your shelf ✓');
+      const msg = currentStatus === 'want' ? 'Saved to Want to Read ✓' : (saved ? 'Updated ✓' : 'Added to your shelf ✓');
+      toast(msg);
       renderHome();
     });
 
