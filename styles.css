@@ -505,6 +505,123 @@ input, textarea { font-family: inherit; color: inherit; }
   min-height: 18px;
 }
 
+/* ---------- Goals card ---------- */
+.goals-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 18px 20px 20px;
+  margin: 18px 0 4px;
+}
+.goals-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+}
+.goals-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+.goals-title .ico svg { width: 16px; height: 16px; color: var(--accent); }
+.goals-edit { font-size: 15px; }
+
+.goals-empty { padding-top: 8px; }
+.goals-empty p {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+  max-width: 34ch;
+}
+.goals-empty .btn { padding: 11px 20px; font-size: 15px; }
+
+.goal-row { padding: 16px 0 4px; border-top: 1px solid var(--separator); margin-top: 12px; }
+.goal-row:first-of-type { border-top: none; margin-top: 8px; padding-top: 8px; }
+.goal-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 9px;
+}
+.goal-label { font-size: 16px; font-weight: 600; }
+.goal-count { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.goal-bar {
+  height: 7px;
+  border-radius: 980px;
+  background: var(--surface-2);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--separator);
+}
+.goal-bar-fill {
+  height: 100%;
+  border-radius: 980px;
+  background: var(--accent);
+  transition: width .4s cubic-bezier(.2,.7,.3,1);
+}
+.goal-row.reached .goal-bar-fill { background: var(--star); }
+.goal-pace { font-size: 13px; color: var(--text-secondary); margin-top: 9px; }
+.goal-row.reached .goal-pace { color: var(--star); font-weight: 500; }
+
+/* ---------- Goals editor ---------- */
+.goal-field {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--separator);
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+.goal-field-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.goal-field-label { font-size: 17px; font-weight: 600; }
+.goal-field-sub { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+.goal-field-pace {
+  font-size: 13px;
+  color: var(--accent);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--separator);
+}
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-2);
+  border-radius: 980px;
+  padding: 4px;
+  box-shadow: inset 0 0 0 1px var(--separator);
+}
+.step-btn {
+  width: 34px; height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--accent);
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+  display: grid; place-items: center;
+  transition: transform .12s ease, background .15s ease;
+}
+.step-btn:active { transform: scale(0.9); background: var(--surface-2); }
+.step-val {
+  min-width: 34px;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Filter chips + sort ---------- */
 .shelf-controls {
   display: flex;

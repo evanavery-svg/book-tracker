@@ -12,7 +12,12 @@
   const COVER = 'https://covers.openlibrary.org/b/id';
 
   /* ---------- State ---------- */
-  const defaultState = { name: '', books: [], ui: { filter: 'all', sort: 'recent' } };
+  const defaultState = {
+    name: '',
+    books: [],
+    ui: { filter: 'all', sort: 'recent' },
+    goals: { daily: 0, weekly: 0, monthly: 0 }
+  };
   let state = loadState();
 
   function loadState() {
@@ -21,6 +26,7 @@
       if (raw) {
         const s = Object.assign({}, defaultState, JSON.parse(raw));
         s.ui = Object.assign({}, defaultState.ui, s.ui);
+        s.goals = Object.assign({}, defaultState.goals, s.goals);
         return s;
       }
     } catch (_) {}
@@ -38,11 +44,48 @@
     if (b.finishedAt) { const t = Date.parse(b.finishedAt); if (!isNaN(t)) return t; }
     return b.addedAt || 0;
   }
-  const todayISO = () => new Date().toISOString().slice(0, 10);
+  const isoOf = (d) => {
+    // Local-date ISO (YYYY-MM-DD), not UTC, so "today" matches the user's clock.
+    const x = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return x.toISOString().slice(0, 10);
+  };
+  const todayISO = () => isoOf(new Date());
   function formatDate(iso) {
     const t = Date.parse(iso);
     if (isNaN(t)) return '';
     return new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  /* ---------- Goal periods (week starts Monday) ---------- */
+  function periodBounds(period) {
+    const now = new Date();
+    const dow = now.getDay();                 // 0=Sun … 6=Sat
+    if (period === 'daily') {
+      return { start: todayISO(), end: todayISO(), daysLeft: 1, label: 'Today' };
+    }
+    if (period === 'weekly') {
+      const fromMon = (dow + 6) % 7;          // days since Monday
+      const start = new Date(now); start.setDate(now.getDate() - fromMon);
+      const daysLeft = 7 - fromMon;           // includes today
+      return { start: isoOf(start), end: todayISO(), daysLeft, label: 'This Week' };
+    }
+    // monthly
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysLeft = daysInMonth - now.getDate() + 1;   // includes today
+    return { start: isoOf(start), end: todayISO(), daysLeft, label: 'This Month' };
+  }
+
+  // Count read books finished within [start, end] (inclusive, ISO strings).
+  function booksFinishedIn(start, end) {
+    return state.books.filter((b) =>
+      bookStatus(b) === 'read' && b.finishedAt && b.finishedAt >= start && b.finishedAt <= end
+    ).length;
+  }
+
+  // Format a per-day pace number cleanly (e.g. 1, 1.5, 0.3).
+  function fmtPace(n) {
+    return (Math.round(n * 10) / 10).toString();
   }
 
   /* ---------- Tiny helpers ---------- */
@@ -68,7 +111,8 @@
     book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 4.5V21.5"/></svg>',
     offline: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a7 7 0 0 1 11-2"/><path d="M8.5 16.5a4 4 0 0 1 6 0"/><circle cx="12" cy="20" r="0.6" fill="currentColor"/><path d="M3 3l18 18"/></svg>',
     calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 9.5h17M8 3v3.5M16 3v3.5"/></svg>',
-    bookmark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h14a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>'
+    bookmark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h14a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>',
+    target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>'
   };
   const icon = (name) => `<span class="ico">${ICON[name] || ''}</span>`;
 
@@ -171,6 +215,8 @@
             placeholder="Search for a book or author…" />
         </div>
 
+        <div id="goals"></div>
+
         <h2 class="section-title">Your Shelf</h2>
         <p class="shelf-stats" id="stats"></p>
         <div class="shelf-controls" id="controls"></div>
@@ -191,9 +237,169 @@
       timer = setTimeout(() => renderSearch(q, search.value), 450);
     });
 
+    paintGoals(view.querySelector('#goals'));
     paintStats(view.querySelector('#stats'));
     buildControls(view.querySelector('#controls'), view.querySelector('#shelf'));
     paintShelf(view.querySelector('#shelf'));
+
+    setView(view);
+  }
+
+  /* ============================================================
+     GOALS — daily / weekly / monthly reading targets + pace
+     ============================================================ */
+  const GOAL_PERIODS = [
+    ['daily', 'Daily', 'day'],
+    ['weekly', 'Weekly', 'week'],
+    ['monthly', 'Monthly', 'month']
+  ];
+
+  // Build the "X to go · ≈Y/day" pace line for a goal.
+  function goalPaceText(period, goal, done) {
+    const remaining = goal - done;
+    if (remaining <= 0) return { reached: true, text: 'Goal reached 🎉' };
+    const noun = remaining === 1 ? 'book' : 'books';
+    if (period === 'daily') {
+      return { reached: false, text: `${remaining} more ${noun} to hit today's goal` };
+    }
+    const { daysLeft } = periodBounds(period);
+    if (daysLeft <= 1) {
+      return { reached: false, text: `${remaining} more ${noun} to read today` };
+    }
+    const pace = remaining / daysLeft;
+    const dayWord = daysLeft === 1 ? 'day' : 'days';
+    if (pace <= 1) {
+      return { reached: false, text: `${remaining} to go · about 1 a day over the next ${daysLeft} ${dayWord}` };
+    }
+    return { reached: false, text: `${remaining} to go · ≈${fmtPace(pace)} books/day over the next ${daysLeft} ${dayWord}` };
+  }
+
+  function paintGoals(node) {
+    node.innerHTML = '';
+    const active = GOAL_PERIODS.filter(([key]) => state.goals[key] > 0);
+
+    const card = el('<div class="goals-card"></div>');
+    const head = el(`
+      <div class="goals-head">
+        <span class="goals-title">${ICON.target} Reading Goals</span>
+        <button class="btn-text goals-edit">${active.length ? 'Edit' : ''}</button>
+      </div>
+    `);
+    head.querySelector('.goals-edit').addEventListener('click', renderGoals);
+    card.appendChild(head);
+
+    if (active.length === 0) {
+      const empty = el(`
+        <div class="goals-empty">
+          <p>Set a daily, weekly, or monthly goal to keep your reading on pace.</p>
+          <button class="btn goals-set">Set a Goal</button>
+        </div>
+      `);
+      empty.querySelector('.goals-set').addEventListener('click', renderGoals);
+      card.appendChild(empty);
+    } else {
+      active.forEach(([key, , unit]) => {
+        const goal = state.goals[key];
+        const { start, end, label } = periodBounds(key);
+        const done = booksFinishedIn(start, end);
+        const pace = goalPaceText(key, goal, done);
+        const pct = Math.max(0, Math.min(1, done / goal));
+        const row = el(`
+          <div class="goal-row ${pace.reached ? 'reached' : ''}">
+            <div class="goal-row-top">
+              <span class="goal-label">${label}</span>
+              <span class="goal-count">${done} / ${goal} ${goal === 1 ? 'book' : 'books'}</span>
+            </div>
+            <div class="goal-bar"><div class="goal-bar-fill" style="width:${pct * 100}%"></div></div>
+            <div class="goal-pace">${pace.text}</div>
+          </div>
+        `);
+        card.appendChild(row);
+      });
+    }
+    node.appendChild(card);
+  }
+
+  /* ---------- Goals editor ---------- */
+  function renderGoals() {
+    const draft = Object.assign({}, state.goals);
+
+    const view = el(`
+      <div>
+        <div class="navbar">
+          <button class="btn-text back" id="back">${ICON.chevron} Shelf</button>
+        </div>
+        <h2 class="section-title" style="margin-top:6px">Reading Goals</h2>
+        <p class="hint" style="margin:-8px 2px 20px">Set how many books you'd like to finish. We'll show the daily pace you need to stay on track.</p>
+        <div id="goal-fields"></div>
+        <div class="detail-actions" style="margin-top:24px">
+          <button class="btn btn-block" id="save-goals">Save Goals</button>
+        </div>
+      </div>
+    `);
+
+    view.querySelector('#back').addEventListener('click', renderHome);
+    const fields = view.querySelector('#goal-fields');
+
+    GOAL_PERIODS.forEach(([key, label, unit]) => {
+      const field = el(`
+        <div class="goal-field">
+          <div class="goal-field-main">
+            <div>
+              <div class="goal-field-label">${label}</div>
+              <div class="goal-field-sub">books per ${unit}</div>
+            </div>
+            <div class="stepper">
+              <button class="step-btn" data-d="-1" aria-label="decrease">−</button>
+              <span class="step-val">${draft[key]}</span>
+              <button class="step-btn" data-d="1" aria-label="increase">+</button>
+            </div>
+          </div>
+          <div class="goal-field-pace"></div>
+        </div>
+      `);
+
+      const valEl = field.querySelector('.step-val');
+      const paceEl = field.querySelector('.goal-field-pace');
+
+      const refresh = () => {
+        valEl.textContent = draft[key];
+        // Live pace preview for week/month, based on what's already read this period.
+        if ((key === 'weekly' || key === 'monthly') && draft[key] > 0) {
+          const { start, end, daysLeft } = periodBounds(key);
+          const done = booksFinishedIn(start, end);
+          const remaining = Math.max(0, draft[key] - done);
+          if (remaining === 0) {
+            paceEl.textContent = `Already reached — ${done} read this ${unit}.`;
+          } else {
+            const pace = remaining / daysLeft;
+            const paceStr = pace <= 1 ? 'about 1' : `≈${fmtPace(pace)}`;
+            paceEl.textContent = `${paceStr} book${pace > 1 ? 's' : ''}/day for the next ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`;
+          }
+          paceEl.style.display = '';
+        } else {
+          paceEl.style.display = 'none';
+        }
+      };
+      refresh();
+
+      field.querySelectorAll('.step-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const d = parseInt(btn.dataset.d, 10);
+          draft[key] = Math.max(0, Math.min(99, (draft[key] || 0) + d));
+          refresh();
+        });
+      });
+      fields.appendChild(field);
+    });
+
+    view.querySelector('#save-goals').addEventListener('click', () => {
+      state.goals = draft;
+      saveState();
+      const any = draft.daily || draft.weekly || draft.monthly;
+      toast(any ? 'Goals saved ✓' : 'Goals cleared');
+      renderHome();
+    });
 
     setView(view);
   }
@@ -473,7 +679,7 @@
             <div class="date-row">
               <label for="finished">${ICON.calendar} Finished</label>
               <input class="date-input" type="date" id="finished"
-                value="${esc(merged.finishedAt || '')}" max="${todayISO()}" />
+                value="${esc(merged.finishedAt || todayISO())}" max="${todayISO()}" />
             </div>
           </div>
 
