@@ -151,6 +151,184 @@
   }
 
   /* ============================================================
+     GENRES — turn Open Library's messy `subjects` into a clean,
+     fleshed-out set of recognizable genres.
+
+     Each book is classified by a majority vote across its subjects.
+     Generic "fiction"/"nonfiction" tags are only used as a last
+     resort, so a specific genre (Sci-Fi, Fantasy, History, …) always
+     wins when one is present. Subjects are listed by Open Library
+     roughly in order of prominence, so ties break toward the genre
+     that appeared earliest.
+     ============================================================ */
+  // Specific genres, ordered by priority (earlier wins a tie of equal votes).
+  const GENRE_RULES = [
+    ['Science Fiction',    /science[ -]?fiction|\bsci[ -]?fi\b|space opera|cyberpunk|steampunk|time travel|interstellar|androids?|\brobots?\b|extraterrestrial|galactic|space flight/i],
+    ['Dystopian',          /dystopia|post-?apocalyptic|apocalyp/i],
+    ['Fantasy',            /fantasy|sword and sorcery|\bmagic|wizard|witch|sorcer|dragons?|\belves\b|\belf\b|mythical|enchant|\bfae\b/i],
+    ['Horror',             /horror|haunt|ghosts?\b|vampire|werewolf|zombie|occult|supernatural|paranormal|monsters?\b/i],
+    ['Mystery',            /myster|detective|whodunit|sleuth|private investigator/i],
+    ['Thriller',           /thriller|suspense|espionage|\bspy\b|\bspies\b|conspiracy/i],
+    ['Crime',              /\bcrime|criminal|murder|\bnoir\b|mafia|gangster|\bheist|underworld/i],
+    ['Romance',            /romance|romantic fiction|love stor|chick lit/i],
+    ['Historical Fiction', /historical fiction|historical novel|historical romance/i],
+    ['Adventure',          /adventure|survival stories|seafaring|\btreasure|\bquest\b|expedition/i],
+    ['Western',            /western stories|\bwesterns\b|\bcowboy|wild west/i],
+    ['Graphic Novel',      /graphic novel|comic|manga|cartoon|superhero/i],
+    ['Young Adult',        /young adult|teenage|coming of age/i],
+    ["Children's",         /juvenile|children|picture book|early reader|middle grade|nursery|bedtime/i],
+    ['Fairy Tales',        /fairy tale|folklore|folk tale|legends|mythology/i],
+    ['Humor',              /humor|humour|satire|parody|comedies/i],
+    ['Poetry',             /poetry|poems|\bverse\b|sonnet/i],
+    ['Drama',              /\bdrama\b|\bplays\b|playscript|theater|theatre|tragedy/i],
+    ['Short Stories',      /short stories|short story/i],
+    ['Classics',           /\bclassic|classical literature/i],
+
+    ['Memoir',             /memoir|autobiograph|diaries|\bdiary\b/i],
+    ['Biography',          /biograph/i],
+    ['History',            /\bhistory\b|historical|world war|civil war|ancient|medieval|revolution|\bempire\b|dynasty/i],
+    ['Science',            /\bscience\b|physics|biology|chemistry|astronomy|cosmos|mathematics|geology|evolution|genetics|neuroscience/i],
+    ['Technology',         /technology|computers?|programming|software|engineering|artificial intelligence|\binternet\b/i],
+    ['Psychology',         /psycholog|cognitive|\bmind\b|mental health|emotions?\b/i],
+    ['Philosophy',         /philosoph|\bethics\b|metaphysic|existential|\bstoic|\blogic\b/i],
+    ['Self-Help',          /self-?help|personal development|self-?improvement|motivation|productivity|\bhabits\b|mindfulness|happiness/i],
+    ['Business',           /business|economic|\bfinance\b|management|entrepreneur|leadership|marketing|investing/i],
+    ['Politics',           /politic|government|democracy|election|public policy|civil rights/i],
+    ['Religion',           /religio|spiritual|christian|\bbible\b|theology|buddhis|\bislam|hindu|judaism|\bfaith\b|prayer/i],
+    ['Travel',             /\btravel|voyages|geography/i],
+    ['Cooking',            /\bcook|cookery|recipe|cuisine|baking|gastronom/i],
+    ['Art & Design',       /\bart\b|painting|sculpture|photography|\bdesign\b|architecture|drawing|fashion/i],
+    ['Health',             /health|fitness|\bdiet\b|nutrition|wellness|exercise|medicine|medical/i],
+    ['Nature',             /nature|natural history|environment|ecology|climate|wildlife|gardening/i],
+    ['True Crime',         /true crime/i],
+    ['Music',              /\bmusic\b|musicians|composers|\bjazz\b|\bopera\b/i],
+    ['Sports',             /sports|football|baseball|basketball|athletics/i],
+    ['Education',          /education|teaching|\bstudy\b|learning|\blanguage/i],
+    ['Essays',             /essays|literary collections/i]
+  ];
+  // Catch-alls used only when nothing specific matched.
+  const GENRE_FALLBACK = [
+    ['Nonfiction', /non-?fiction/i],
+    ['Fiction',    /fiction|novel|stories/i]
+  ];
+
+  function matchRule(rules, s) {
+    for (const [name, re] of rules) if (re.test(s)) return name;
+    return null;
+  }
+
+  // Primary genre for a book, or null when it has no usable subjects.
+  function genreOf(book) {
+    const subs = Array.isArray(book && book.subjects) ? book.subjects : [];
+    if (!subs.length) return null;
+    const counts = new Map();
+    const firstSeen = new Map();
+    let fallback = null;
+    subs.forEach((raw, i) => {
+      const s = String(raw);
+      const g = matchRule(GENRE_RULES, s);
+      if (g) {
+        counts.set(g, (counts.get(g) || 0) + 1);
+        if (!firstSeen.has(g)) firstSeen.set(g, i);
+      } else if (!fallback) {
+        fallback = matchRule(GENRE_FALLBACK, s);
+      }
+    });
+    if (!counts.size) return fallback;
+    let best = null, bestN = -1, bestSeen = Infinity;
+    counts.forEach((n, g) => {
+      const seen = firstSeen.get(g);
+      if (n > bestN || (n === bestN && seen < bestSeen)) { best = g; bestN = n; bestSeen = seen; }
+    });
+    return best;
+  }
+
+  // Tally primary genres across books → [genre, count] sorted descending.
+  function genreBreakdown(books) {
+    const counts = new Map();
+    books.forEach((b) => {
+      const g = genreOf(b);
+      if (g) counts.set(g, (counts.get(g) || 0) + 1);
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }
+
+  // Warm, editorial categorical palette that harmonizes with the paper theme.
+  const GENRE_PALETTE = ['#b0573a', '#c79447', '#6f7d5e', '#4f6d7a', '#8a6c8e', '#9c6b4f'];
+  const GENRE_OTHER_COLOR = '#bdb6aa';
+
+  /* ---------- Reading Insights card (donut of most-read genres) ---------- */
+  function paintInsights(node) {
+    node.innerHTML = '';
+    const read = state.books.filter((b) => bookStatus(b) === 'read');
+    const breakdown = genreBreakdown(read);
+    const totalCategorized = breakdown.reduce((s, [, n]) => s + n, 0);
+    // Wait until there's enough read to make the chart meaningful.
+    if (breakdown.length < 2 || totalCategorized < 3) return;
+
+    // Show the top genres individually; collapse the long tail into "Other".
+    const TOP = 5;
+    const segments = breakdown.slice(0, TOP).map(([name, count], i) => ({
+      name, count, color: GENRE_PALETTE[i % GENRE_PALETTE.length]
+    }));
+    const otherCount = breakdown.slice(TOP).reduce((s, [, n]) => s + n, 0);
+    if (otherCount > 0) segments.push({ name: 'Other', count: otherCount, color: GENRE_OTHER_COLOR });
+
+    const total = segments.reduce((s, x) => s + x.count, 0);
+    const topGenre = segments[0].name;
+
+    // Donut via the stroke-dasharray technique (circumference normalized to 100).
+    let cumulative = 0;
+    const ring = segments.map((seg) => {
+      const pct = (seg.count / total) * 100;
+      const dash = `${pct.toFixed(2)} ${(100 - pct).toFixed(2)}`;
+      const offset = (100 - cumulative + 25).toFixed(2);
+      cumulative += pct;
+      return `<circle class="donut-seg" cx="18" cy="18" r="15.91549431"
+        fill="none" stroke="${seg.color}" stroke-width="4.4"
+        stroke-dasharray="${dash}" stroke-dashoffset="${offset}"></circle>`;
+    }).join('');
+
+    const legend = segments.map((seg) => `
+      <div class="legend-row">
+        <span class="legend-dot" style="background:${seg.color}"></span>
+        <span class="legend-name">${esc(seg.name)}</span>
+        <span class="legend-count">${seg.count}</span>
+      </div>`).join('');
+
+    const card = el(`
+      <div class="insights-card">
+        <div class="insights-head">
+          <div class="insights-headings">
+            <div class="insights-eyebrow">Most read genres</div>
+            <div class="insights-top">${esc(topGenre)}</div>
+            <div class="insights-sub">across ${total} ${total === 1 ? 'book' : 'books'} you've read</div>
+          </div>
+          <button class="insights-share" aria-label="Share your reading insights">${ICON.share}</button>
+        </div>
+        <div class="insights-body">
+          <svg class="donut" viewBox="0 0 36 36" role="img" aria-label="Most read genres breakdown">${ring}</svg>
+          <div class="insights-legend">${legend}</div>
+        </div>
+      </div>
+    `);
+
+    card.querySelector('.insights-share').addEventListener('click', () => {
+      const list = segments.slice(0, 3).map((s) => `${s.name} (${s.count})`).join(', ');
+      const text = `My most-read genre on Shelf is ${topGenre}. Top genres: ${list}.`;
+      if (navigator.share) {
+        navigator.share({ title: 'My Reading Insights', text }).catch(() => {});
+      } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard ✓')).catch(() => {});
+      } else {
+        toast(`${topGenre} is your top genre`);
+      }
+    });
+
+    node.appendChild(card);
+  }
+
+  /* ============================================================
      ROUTING — very small hash-free view switcher
      ============================================================ */
   function render() {
@@ -220,6 +398,7 @@
         </div>
 
         <div id="goals"></div>
+        <div id="insights"></div>
 
         <h2 class="section-title">Your Shelf</h2>
         <p class="shelf-stats" id="stats"></p>
@@ -242,6 +421,7 @@
     });
 
     paintGoals(view.querySelector('#goals'));
+    paintInsights(view.querySelector('#insights'));
     paintStats(view.querySelector('#stats'));
     buildControls(view.querySelector('#controls'), view.querySelector('#shelf'));
     paintShelf(view.querySelector('#shelf'));
@@ -673,6 +853,7 @@
             <h2>${esc(merged.title)}</h2>
             <div class="author">${esc(authorLine(merged.author))}</div>
             ${merged.year ? `<div class="year">First published ${esc(merged.year)}</div>` : ''}
+            ${(() => { const g = genreOf(merged); return g ? `<div class="genre-tag">${esc(g)}</div>` : ''; })()}
             <div id="badge-slot"></div>
           </div>
         </div>
