@@ -116,7 +116,13 @@
     offline: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a7 7 0 0 1 11-2"/><path d="M8.5 16.5a4 4 0 0 1 6 0"/><circle cx="12" cy="20" r="0.6" fill="currentColor"/><path d="M3 3l18 18"/></svg>',
     calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 9.5h17M8 3v3.5M16 3v3.5"/></svg>',
     bookmark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h14a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>',
-    target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>'
+    target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>',
+    heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 5.6a5 5 0 0 0-7.1 0L12 7.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 21l8.8-8.3a5 5 0 0 0 0-7.1z"/></svg>',
+    heartFill: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21l-8.8-8.3a5 5 0 1 1 7.1-7.1L12 7.3l1.7-1.7a5 5 0 1 1 7.1 7.1z"/></svg>',
+    close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+    pages: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5z"/></svg>',
+    note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.5h14a1 1 0 0 1 1 1V17l-4 4H6a1 1 0 0 1-1-1z"/><path d="M20 16h-4v4"/><path d="M9 8h7M9 12h5"/></svg>'
   };
   const icon = (name) => `<span class="ico">${ICON[name] || ''}</span>`;
 
@@ -314,15 +320,8 @@
     `);
 
     card.querySelector('.insights-share').addEventListener('click', () => {
-      const list = segments.slice(0, 3).map((s) => `${s.name} (${s.count})`).join(', ');
-      const text = `My most-read genre on Shelf is ${topGenre}. Top genres: ${list}.`;
-      if (navigator.share) {
-        navigator.share({ title: 'My Reading Insights', text }).catch(() => {});
-      } else if (navigator.clipboard) {
-        navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard ✓')).catch(() => {});
-      } else {
-        toast(`${topGenre} is your top genre`);
-      }
+      haptic();
+      shareInsightsCard(segments, topGenre, total);
     });
 
     node.appendChild(card);
@@ -398,7 +397,10 @@
         </div>
 
         <div id="goals"></div>
+        <div id="onthisday"></div>
         <div id="insights"></div>
+        <div id="activity"></div>
+        <div id="favorites"></div>
 
         <h2 class="section-title">Your Shelf</h2>
         <p class="shelf-stats" id="stats"></p>
@@ -421,7 +423,10 @@
     });
 
     paintGoals(view.querySelector('#goals'));
+    paintOnThisDay(view.querySelector('#onthisday'));
     paintInsights(view.querySelector('#insights'));
+    paintActivity(view.querySelector('#activity'));
+    paintFavorites(view.querySelector('#favorites'));
     paintStats(view.querySelector('#stats'));
     buildControls(view.querySelector('#controls'), view.querySelector('#shelf'));
     paintShelf(view.querySelector('#shelf'));
@@ -623,9 +628,13 @@
       ['read', 'Read'],
       ['want', 'Want to Read']
     ];
+    // Custom shelves/tags appear as their own chips (value "tag:Name").
+    allTags().forEach((t) => filters.push([`tag:${t}`, t]));
+
     const chips = el('<div class="chips"></div>');
     filters.forEach(([key, label]) => {
-      const chip = el(`<button class="chip ${state.ui.filter === key ? 'on' : ''}">${label}</button>`);
+      const isTag = key.startsWith('tag:');
+      const chip = el(`<button class="chip ${isTag ? 'chip-tag' : ''} ${state.ui.filter === key ? 'on' : ''}">${esc(label)}</button>`);
       chip.addEventListener('click', () => {
         state.ui.filter = key; saveState();
         chips.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
@@ -665,7 +674,12 @@
 
     let books = state.books.slice();
     const f = state.ui.filter;
-    if (f === 'read' || f === 'want' || f === 'reading') books = books.filter((b) => bookStatus(b) === f);
+    if (f && f.startsWith('tag:')) {
+      const t = f.slice(4);
+      books = books.filter((b) => bookTags(b).includes(t));
+    } else if (f === 'read' || f === 'want' || f === 'reading') {
+      books = books.filter((b) => bookStatus(b) === f);
+    }
 
     const titleKey = (b) => (b.title || '').toLowerCase();
     const authorKey = (b) => {
@@ -686,11 +700,14 @@
           <div class="glyph">${ICON.book}</div>
           <h3>${f === 'want' ? 'Nothing on your list yet'
             : f === 'reading' ? 'Not reading anything yet'
+            : f && f.startsWith('tag:') ? `No books in “${esc(f.slice(4))}”`
             : 'No books here'}</h3>
           <p>${f === 'want'
             ? 'Find a book and mark it “Want to Read” to save it for later.'
             : f === 'reading'
             ? 'Open a book and mark it “Reading” to track it here.'
+            : f && f.startsWith('tag:')
+            ? 'Open a book and add this tag to file it on this shelf.'
             : 'Try a different filter.'}</p>
         </div>
       `));
@@ -704,7 +721,10 @@
 
   function shelfCard(book) {
     const card = el(`<button class="book-card"></button>`);
-    card.appendChild(coverEl(book, 'M'));
+    const coverWrap = el('<div class="cover-wrap"></div>');
+    coverWrap.appendChild(coverEl(book, 'M'));
+    if (book.favorite) coverWrap.appendChild(el(`<span class="cover-heart">${ICON.heartFill}</span>`));
+    card.appendChild(coverWrap);
     card.appendChild(el(`<div class="b-title">${esc(book.title)}</div>`));
     card.appendChild(el(`<div class="b-author">${esc(authorLine(book.author))}</div>`));
     const status = bookStatus(book);
@@ -712,11 +732,15 @@
       card.appendChild(el(`<div class="b-want">${ICON.bookmark} Want to read</div>`));
     } else if (status === 'reading') {
       card.appendChild(el(`<div class="b-reading">${ICON.book} Reading</div>`));
-      if (book.startedAt) {
+      const p = bookProgress(book);
+      if (p != null) {
+        card.appendChild(el(`<div class="b-progress"><div class="b-progress-fill" style="width:${Math.round(p * 100)}%"></div></div>`));
+        card.appendChild(el(`<div class="b-author" style="margin-top:4px">${Math.round(p * 100)}% · p.${book.currentPage} of ${book.pages}</div>`));
+      } else if (book.startedAt) {
         card.appendChild(el(`<div class="b-author" style="margin-top:3px">Since ${esc(formatDate(book.startedAt))}</div>`));
       }
     } else if (book.rating) {
-      card.appendChild(el(`<div class="b-mini-stars">${'★'.repeat(book.rating)}${'☆'.repeat(5 - book.rating)}</div>`));
+      card.appendChild(el(miniStars(book.rating)));
       if (book.finishedAt) {
         card.appendChild(el(`<div class="b-author" style="margin-top:3px">${esc(formatDate(book.finishedAt))}</div>`));
       }
@@ -765,7 +789,7 @@
   }
 
   async function searchBooks(query) {
-    const url = `${OL}/search.json?q=${encodeURIComponent(query)}&limit=24&fields=key,title,author_name,cover_i,first_publish_year,subject`;
+    const url = `${OL}/search.json?q=${encodeURIComponent(query)}&limit=24&fields=key,title,author_name,cover_i,first_publish_year,subject,number_of_pages_median`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('search failed');
     const data = await res.json();
@@ -779,41 +803,60 @@
       author: d.author_name || null,
       coverId: d.cover_i || null,
       year: d.first_publish_year || null,
-      subjects: Array.isArray(d.subject) ? d.subject.slice(0, 8) : null
+      subjects: Array.isArray(d.subject) ? d.subject.slice(0, 8) : null,
+      pages: d.number_of_pages_median || null
     };
   }
 
   async function doSearch(query, container, isCurrent) {
     if (!query || query.length < 2) return;
     container.innerHTML = '';
-    container.appendChild(el('<div class="spinner"></div>'));
+
+    // Your own shelf first — full-text across titles, authors, reviews,
+    // genres, tags and notes (works offline, instant).
+    const local = searchLocal(query);
+    if (local.length) {
+      const sec = el(`<div class="result-section"><h3 class="result-label">On your shelf · ${local.length}</h3></div>`);
+      const grid = el('<div class="book-grid"></div>');
+      local.forEach((b) => grid.appendChild(shelfCard(b)));
+      sec.appendChild(grid);
+      container.appendChild(sec);
+    }
+
+    // Then the Open Library catalogue.
+    const libWrap = el('<div class="result-section"></div>');
+    container.appendChild(libWrap);
+    libWrap.appendChild(el('<div class="spinner"></div>'));
     try {
       const books = await searchBooks(query);
       if (!isCurrent()) return;
-      container.innerHTML = '';
+      libWrap.innerHTML = '';
       if (books.length === 0) {
-        container.appendChild(el(`
-          <div class="empty">
-            <div class="glyph">${ICON.search}</div>
-            <h3>No results</h3>
-            <p>Try a different title or author.</p>
-          </div>`));
+        if (!local.length) {
+          libWrap.appendChild(el(`
+            <div class="empty">
+              <div class="glyph">${ICON.search}</div>
+              <h3>No results</h3>
+              <p>Try a different title or author.</p>
+            </div>`));
+        }
         return;
       }
+      libWrap.appendChild(el(`<h3 class="result-label">From the library</h3>`));
       const grid = el('<div class="book-grid"></div>');
       books.forEach((b) => {
         const existing = findBook(b.key);
         grid.appendChild(searchCard(existing ? Object.assign({}, b, existing) : b));
       });
-      container.appendChild(grid);
+      libWrap.appendChild(grid);
     } catch (err) {
       if (!isCurrent()) return;
-      container.innerHTML = '';
-      container.appendChild(el(`
+      libWrap.innerHTML = '';
+      libWrap.appendChild(el(`
         <div class="empty">
           <div class="glyph">${ICON.offline}</div>
-          <h3>Couldn't reach the library</h3>
-          <p>Check your connection and try again.</p>
+          <h3>${local.length ? 'Library unavailable' : "Couldn't reach the library"}</h3>
+          <p>${local.length ? 'Showing matches from your shelf.' : 'Check your connection and try again.'}</p>
         </div>`));
     }
   }
@@ -839,12 +882,18 @@
     const merged = saved ? Object.assign({}, book, saved) : Object.assign({}, book);
     let rating = merged.rating || 0;
     let currentStatus = bookStatus(merged);  // 'want' | 'reading' | 'read'
+    let favorite = !!merged.favorite;
+    let tags = bookTags(merged).slice();
+    let notes = bookNotes(merged).slice();
 
     const view = el(`
       <div>
         <div class="navbar">
           <button class="btn-text back" id="back">${ICON.chevron} Back</button>
-          <span id="remove-slot"></span>
+          <span class="navbar-actions">
+            <button class="icon-btn fav-btn" id="fav-btn" aria-label="Add to favorites"></button>
+            <span id="remove-slot"></span>
+          </span>
         </div>
 
         <div class="detail-top">
@@ -883,6 +932,39 @@
             <label for="finished">${ICON.calendar} Finished</label>
             <input class="date-input" type="date" id="finished"
               value="${esc(merged.finishedAt || '')}" max="${todayISO()}" />
+          </div>
+
+          <div class="date-row" id="pages-row">
+            <label for="pages">${ICON.pages} Pages</label>
+            <input class="date-input num-input" type="number" inputmode="numeric" id="pages"
+              min="1" max="20000" placeholder="—" value="${esc(merged.pages || '')}" />
+          </div>
+
+          <div id="progress-row">
+            <label for="current-page" style="display:block">Reading progress</label>
+            <div class="progress-edit">
+              <input class="date-input num-input" type="number" inputmode="numeric" id="current-page"
+                min="0" placeholder="Current page" value="${esc(merged.currentPage || '')}" />
+              <div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div>
+            </div>
+            <div class="progress-text" id="progress-text"></div>
+          </div>
+
+          <div id="tags-row">
+            <label>Shelves &amp; tags</label>
+            <div class="tag-edit" id="tag-edit"></div>
+          </div>
+
+          <div id="notes-block">
+            <label>${ICON.note} Notes &amp; highlights</label>
+            <div id="notes-list"></div>
+            <div class="note-compose">
+              <textarea class="review-input note-text" id="note-input" placeholder="Save a quote or a thought…"></textarea>
+              <div class="note-compose-foot">
+                <input class="date-input num-input note-page" type="number" inputmode="numeric" id="note-page" min="0" placeholder="Page" />
+                <button class="btn btn-secondary note-add" id="add-note">${ICON.plus} Add note</button>
+              </div>
+            </div>
           </div>
 
           <div class="detail-actions">
@@ -927,6 +1009,112 @@
     const startedInput = view.querySelector('#started');
     const finishedInput = view.querySelector('#finished');
     const saveBtn = view.querySelector('#save');
+    const pagesRow = view.querySelector('#pages-row');
+    const progressRow = view.querySelector('#progress-row');
+    const pagesInput = view.querySelector('#pages');
+    const currentPageInput = view.querySelector('#current-page');
+    const progressFill = view.querySelector('#progress-fill');
+    const progressText = view.querySelector('#progress-text');
+
+    // Live reading-progress bar from page numbers.
+    function updateProgress() {
+      const total = Number(pagesInput.value) || 0;
+      const cur = Number(currentPageInput.value) || 0;
+      if (total > 0 && cur > 0) {
+        const pct = Math.max(0, Math.min(100, Math.round((cur / total) * 100)));
+        progressFill.style.width = pct + '%';
+        const left = Math.max(0, total - cur);
+        progressText.textContent = `${pct}% · ${left} page${left === 1 ? '' : 's'} left`;
+      } else {
+        progressFill.style.width = '0%';
+        progressText.textContent = total > 0 ? `of ${total} pages` : '';
+      }
+    }
+    pagesInput.addEventListener('input', updateProgress);
+    currentPageInput.addEventListener('input', updateProgress);
+
+    // Favorite heart (persists immediately when the book is already saved).
+    const favBtn = view.querySelector('#fav-btn');
+    function paintFav() {
+      favBtn.innerHTML = favorite ? ICON.heartFill : ICON.heart;
+      favBtn.classList.toggle('on', favorite);
+    }
+    favBtn.addEventListener('click', () => {
+      favorite = !favorite;
+      haptic();
+      paintFav();
+      const idx = state.books.findIndex((b) => b.key === merged.key);
+      if (idx >= 0) {
+        state.books[idx].favorite = favorite;
+        saveState();
+        toast(favorite ? 'Added to favorites ♥' : 'Removed from favorites');
+      }
+    });
+    paintFav();
+
+    // Custom shelves / tags editor.
+    const dl = el('<datalist id="tag-suggestions"></datalist>');
+    allTags().forEach((t) => dl.appendChild(el(`<option value="${esc(t)}"></option>`)));
+    view.appendChild(dl);
+    const tagEdit = view.querySelector('#tag-edit');
+    function paintTags() {
+      tagEdit.innerHTML = '';
+      tags.forEach((t, i) => {
+        const chip = el(`<span class="tag-chip">${esc(t)}<button class="tag-x" aria-label="Remove tag">${ICON.close}</button></span>`);
+        chip.querySelector('.tag-x').addEventListener('click', () => { tags.splice(i, 1); paintTags(); });
+        tagEdit.appendChild(chip);
+      });
+      const addWrap = el('<span class="tag-add-wrap"><input class="tag-add" placeholder="Add tag…" maxlength="24" list="tag-suggestions" /></span>');
+      const input = addWrap.querySelector('.tag-add');
+      const commit = () => {
+        const v = input.value.trim();
+        if (v && !tags.some((t) => t.toLowerCase() === v.toLowerCase())) {
+          tags.push(v);
+          paintTags();
+          const ni = tagEdit.querySelector('.tag-add');
+          if (ni) ni.focus();
+        } else { input.value = ''; }
+      };
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
+      tagEdit.appendChild(addWrap);
+    }
+    paintTags();
+
+    // Notes & highlights.
+    const notesList = view.querySelector('#notes-list');
+    const noteInput = view.querySelector('#note-input');
+    const notePage = view.querySelector('#note-page');
+    function paintNotes() {
+      notesList.innerHTML = '';
+      if (!notes.length) {
+        notesList.appendChild(el('<p class="notes-empty">No notes yet — save a favorite quote or a thought.</p>'));
+        return;
+      }
+      notes.slice()
+        .sort((a, b) => (a.page || 0) - (b.page || 0) || (a.createdAt || 0) - (b.createdAt || 0))
+        .forEach((n) => {
+          const item = el(`
+            <div class="note-item">
+              <div class="note-body">${esc(n.text)}</div>
+              <div class="note-foot">
+                ${n.page ? `<span class="note-pageno">Page ${esc(n.page)}</span>` : '<span></span>'}
+                <button class="note-del" aria-label="Delete note">${ICON.close}</button>
+              </div>
+            </div>
+          `);
+          item.querySelector('.note-del').addEventListener('click', () => { notes = notes.filter((x) => x !== n); paintNotes(); });
+          notesList.appendChild(item);
+        });
+    }
+    view.querySelector('#add-note').addEventListener('click', () => {
+      const text = noteInput.value.trim();
+      if (!text) { noteInput.focus(); return; }
+      notes.push({ text, page: Number(notePage.value) || null, createdAt: Date.now() });
+      noteInput.value = ''; notePage.value = '';
+      haptic();
+      paintNotes();
+    });
+    paintNotes();
 
     function applyStatus() {
       const isWant = currentStatus === 'want';
@@ -936,6 +1124,9 @@
       ratingRow.style.display = isRead ? '' : 'none';
       startedRow.style.display = (isReading || isRead) ? '' : 'none';
       finishedRow.style.display = isRead ? '' : 'none';
+      pagesRow.style.display = (isReading || isRead) ? '' : 'none';
+      progressRow.style.display = isReading ? '' : 'none';
+      updateProgress();
 
       // Sensible date defaults the first time a status is chosen.
       if ((isReading || isRead) && !startedInput.value && !merged.startedAt) {
@@ -969,6 +1160,7 @@
         const s = el(`<button class="star ${i <= rating ? 'on' : ''}" aria-label="${i} star">★</button>`);
         s.addEventListener('click', () => {
           rating = (rating === i) ? 0 : i;
+          haptic();
           paintStars();
         });
         starsWrap.appendChild(s);
@@ -996,12 +1188,18 @@
         review: isRead ? review : '',
         startedAt: isWant ? null : (startedAt || merged.startedAt || null),
         finishedAt: isRead ? (finishedAt || merged.finishedAt || todayISO()) : null,
+        pages: Number(pagesInput.value) || merged.pages || null,
+        currentPage: currentStatus === 'reading' ? (Number(currentPageInput.value) || null) : null,
+        tags: tags.slice(),
+        notes: notes.slice(),
+        favorite: favorite,
         addedAt: saved && saved.addedAt ? saved.addedAt : Date.now(),
         updatedAt: Date.now()
       };
       const idx = state.books.findIndex((b) => b.key === merged.key);
       if (idx >= 0) state.books[idx] = record; else state.books.push(record);
       saveState();
+      haptic();
       const msg = saved ? 'Updated ✓'
         : isWant ? 'Saved to Want to Read ✓'
         : currentStatus === 'reading' ? 'Added to Currently Reading ✓'
@@ -1101,6 +1299,268 @@
       .map((s) => String(s).trim())
       .filter((s) => s && s.length < 40 && !banned.test(s));
     return cleaned[0] || subjects[0] || null;
+  }
+
+  /* ============================================================
+     EXTRAS — favorites, custom shelves/tags, notes & highlights,
+     page progress, activity heatmap, on-this-day, haptics, share.
+     ============================================================ */
+
+  // A subtle haptic tick where supported (Android/Chrome). iOS PWAs no-op.
+  function haptic(ms) {
+    try { if (navigator.vibrate) navigator.vibrate(ms || 8); } catch (_) {}
+  }
+
+  // ---- Per-book accessors (all fields optional / back-compatible) ----
+  function bookTags(b) {
+    return Array.isArray(b && b.tags) ? b.tags.filter(Boolean) : [];
+  }
+  function bookNotes(b) {
+    return Array.isArray(b && b.notes) ? b.notes : [];
+  }
+  // Reading progress 0..1 when both page counts are known, else null.
+  function bookProgress(b) {
+    const total = Number(b && b.pages) || 0;
+    const cur = Number(b && b.currentPage) || 0;
+    if (total > 0 && cur > 0) return Math.max(0, Math.min(1, cur / total));
+    return null;
+  }
+  // Every custom tag in use, most-used first.
+  function allTags() {
+    const counts = new Map();
+    state.books.forEach((b) => bookTags(b).forEach((t) => counts.set(t, (counts.get(t) || 0) + 1)));
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([t]) => t);
+  }
+
+  const miniStars = (n) => `<div class="b-mini-stars">${'★'.repeat(n)}${'☆'.repeat(5 - n)}</div>`;
+
+  /* ---------- Favorites row (#7) ---------- */
+  function paintFavorites(node) {
+    node.innerHTML = '';
+    const favs = state.books.filter((b) => b.favorite)
+      .sort((a, b) => (b.rating || 0) - (a.rating || 0) || bookTime(b) - bookTime(a));
+    if (favs.length === 0) return;
+
+    const card = el(`
+      <div class="fav-block">
+        <div class="fav-head">
+          <span class="mini-eyebrow">${ICON.heartFill} Favorites</span>
+        </div>
+        <div class="fav-row"></div>
+      </div>
+    `);
+    const row = card.querySelector('.fav-row');
+    favs.forEach((b) => {
+      const item = el('<button class="fav-item"></button>');
+      item.appendChild(coverEl(b, 'M'));
+      item.appendChild(el(`<div class="b-title">${esc(b.title)}</div>`));
+      if (b.rating) item.appendChild(el(miniStars(b.rating)));
+      item.addEventListener('click', () => renderDetail(b, { fromShelf: true }));
+      row.appendChild(item);
+    });
+    node.appendChild(card);
+  }
+
+  /* ---------- On this day (#9) ---------- */
+  function paintOnThisDay(node) {
+    node.innerHTML = '';
+    const now = new Date();
+    const mmdd = todayISO().slice(5);
+    const thisYear = now.getFullYear();
+    const matches = state.books.filter((b) => {
+      if (bookStatus(b) !== 'read' || !b.finishedAt) return false;
+      return b.finishedAt.slice(5) === mmdd && Number(b.finishedAt.slice(0, 4)) < thisYear;
+    }).sort((a, b) => b.finishedAt.localeCompare(a.finishedAt));
+    if (!matches.length) return;
+
+    const book = matches[0];
+    const yearsAgo = thisYear - Number(book.finishedAt.slice(0, 4));
+    const when = yearsAgo === 1 ? 'A year ago today' : `${yearsAgo} years ago today`;
+    const snippet = book.review
+      ? (book.review.length > 130 ? book.review.slice(0, 130).trim() + '…' : book.review)
+      : '';
+
+    const card = el(`
+      <button class="otd-card">
+        <div class="mini-eyebrow">${ICON.calendar} On this day</div>
+        <div class="otd-body">
+          <div class="otd-cover"></div>
+          <div class="otd-meta">
+            <div class="otd-when">${when} you finished</div>
+            <div class="otd-title">${esc(book.title)}</div>
+            <div class="otd-author">${esc(authorLine(book.author))}</div>
+            ${book.rating ? `<div style="margin-top:6px">${miniStars(book.rating)}</div>` : ''}
+            ${snippet ? `<div class="otd-review">“${esc(snippet)}”</div>` : ''}
+          </div>
+        </div>
+      </button>
+    `);
+    card.querySelector('.otd-cover').appendChild(coverEl(book, 'M'));
+    card.addEventListener('click', () => renderDetail(book, { fromShelf: true }));
+    node.appendChild(card);
+  }
+
+  /* ---------- Reading activity heatmap (#2) ---------- */
+  function paintActivity(node) {
+    node.innerHTML = '';
+    const reads = state.books.filter((b) => bookStatus(b) === 'read' && b.finishedAt);
+    if (reads.length < 2) return;
+
+    const counts = new Map();
+    reads.forEach((b) => counts.set(b.finishedAt, (counts.get(b.finishedAt) || 0) + 1));
+
+    const WEEKS = 26;                          // ~6 months
+    const today = new Date(); today.setHours(12, 0, 0, 0);
+    const dow = (today.getDay() + 6) % 7;      // 0 = Monday
+    const lastMonday = new Date(today); lastMonday.setDate(today.getDate() - dow);
+    const start = new Date(lastMonday); start.setDate(lastMonday.getDate() - (WEEKS - 1) * 7);
+
+    let total = 0;
+    const monthLabels = [];
+    const cols = [];
+    let lastMonth = -1;
+    for (let w = 0; w < WEEKS; w++) {
+      const colCells = [];
+      const colFirst = new Date(start); colFirst.setDate(start.getDate() + w * 7);
+      const m = colFirst.getMonth();
+      if (m !== lastMonth) {
+        monthLabels.push(`<span class="hm-month" style="grid-column:${w + 1}">${colFirst.toLocaleString(undefined, { month: 'short' })}</span>`);
+        lastMonth = m;
+      }
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(start); day.setDate(start.getDate() + w * 7 + d);
+        const iso = isoOf(day);
+        const future = day > today;
+        const n = future ? -1 : (counts.get(iso) || 0);
+        if (n > 0) total += n;
+        const lvl = n < 0 ? 'future' : n === 0 ? 0 : n === 1 ? 1 : n === 2 ? 2 : 3;
+        const tip = n > 0 ? `${iso} · ${n} finished` : iso;
+        colCells.push(`<span class="hm-cell hm-${lvl}" title="${tip}"></span>`);
+      }
+      cols.push(`<div class="hm-col">${colCells.join('')}</div>`);
+    }
+
+    const card = el(`
+      <div class="activity-card">
+        <div class="activity-head">
+          <span class="mini-eyebrow">${ICON.calendar} Reading activity</span>
+          <span class="activity-sub">${total} finished · 6 months</span>
+        </div>
+        <div class="hm-scroll">
+          <div class="hm-months">${monthLabels.join('')}</div>
+          <div class="hm-grid">${cols.join('')}</div>
+        </div>
+        <div class="hm-legend">
+          <span>Less</span>
+          <span class="hm-cell hm-0"></span>
+          <span class="hm-cell hm-1"></span>
+          <span class="hm-cell hm-2"></span>
+          <span class="hm-cell hm-3"></span>
+          <span>More</span>
+        </div>
+      </div>
+    `);
+    node.appendChild(card);
+  }
+
+  /* ---------- Full-text search of your own shelf (#6) ---------- */
+  function searchLocal(query) {
+    const q = query.toLowerCase();
+    return state.books.filter((b) => {
+      const hay = [
+        b.title,
+        Array.isArray(b.author) ? b.author.join(' ') : b.author,
+        b.review,
+        genreOf(b),
+        bookTags(b).join(' '),
+        bookNotes(b).map((n) => n.text).join(' ')
+      ].filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  /* ---------- Richer share card for Reading Insights (#10) ---------- */
+  function roundRectPath(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+  }
+
+  async function shareInsightsCard(segments, topGenre, total) {
+    try {
+      const W = 1080, H = 1350;
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const g = c.getContext('2d');
+
+      g.fillStyle = '#fbfaf6'; g.fillRect(0, 0, W, H);
+      g.strokeStyle = 'rgba(31,29,26,0.10)'; g.lineWidth = 2;
+      roundRectPath(g, 46, 46, W - 92, H - 92, 36); g.stroke();
+
+      g.textAlign = 'left';
+      g.fillStyle = '#a8a299';
+      g.font = '700 30px Georgia, "Times New Roman", serif';
+      g.fillText('M O S T   R E A D   G E N R E S', 100, 150);
+
+      g.fillStyle = '#b0573a';
+      g.font = '700 104px Georgia, "Times New Roman", serif';
+      g.fillText(topGenre, 96, 256);
+
+      g.fillStyle = '#76716a';
+      g.font = '400 36px Georgia, "Times New Roman", serif';
+      g.fillText(`across ${total} ${total === 1 ? 'book' : 'books'} read`, 100, 312);
+
+      // Donut
+      const cx = W / 2, cy = 660, R = 200, lw = 78;
+      let a0 = -Math.PI / 2;
+      segments.forEach((s) => {
+        const a1 = a0 + (s.count / total) * Math.PI * 2;
+        g.beginPath(); g.lineWidth = lw; g.lineCap = 'butt';
+        g.strokeStyle = s.color; g.arc(cx, cy, R, a0, a1); g.stroke();
+        a0 = a1;
+      });
+
+      // Legend
+      let ly = 980;
+      segments.forEach((s) => {
+        g.fillStyle = s.color; roundRectPath(g, 110, ly - 30, 36, 36, 10); g.fill();
+        g.fillStyle = '#1f1d1a';
+        g.font = '700 42px Georgia, "Times New Roman", serif';
+        g.textAlign = 'left'; g.fillText(s.name, 170, ly);
+        g.fillStyle = '#76716a';
+        g.textAlign = 'right'; g.fillText(String(s.count), W - 110, ly);
+        ly += 66;
+      });
+
+      g.textAlign = 'center';
+      g.fillStyle = '#aaa49a';
+      g.font = '700 32px Georgia, "Times New Roman", serif';
+      g.fillText('S H E L F', W / 2, H - 86);
+
+      const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
+      const file = new File([blob], 'shelf-reading.png', { type: 'image/png' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'My Reading on Shelf' });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'shelf-reading.png';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        toast('Saved your insights image ✓');
+      }
+    } catch (_) {
+      const text = `My most-read genre on Shelf is ${topGenre}.`;
+      if (navigator.share) navigator.share({ title: 'My Reading on Shelf', text }).catch(() => {});
+      else toast(`${topGenre} is your top genre`);
+    }
   }
 
   /* ============================================================
