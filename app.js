@@ -41,6 +41,17 @@
   const coverUrl = (id, size) =>
     id ? `${COVER}/${id}-${size}.jpg` : '';
 
+  /* ---------- Inline line icons (stroke = currentColor) ---------- */
+  const ICON = {
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+    chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+    share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M5 12v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg>',
+    book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 4.5V21.5"/></svg>',
+    offline: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a7 7 0 0 1 11-2"/><path d="M8.5 16.5a4 4 0 0 1 6 0"/><circle cx="12" cy="20" r="0.6" fill="currentColor"/><path d="M3 3l18 18"/></svg>'
+  };
+  const icon = (name) => `<span class="ico">${ICON[name] || ''}</span>`;
+
   function authorLine(a) {
     if (!a) return 'Unknown author';
     if (Array.isArray(a)) return a.slice(0, 2).join(', ') || 'Unknown author';
@@ -101,7 +112,7 @@
 
         <div class="install-card">
           <h3>Add Shelf to your Home Screen</h3>
-          <div class="install-step"><span class="num">1</span><span>Tap the <span class="share-icon">Share ⬆️</span> button in Safari</span></div>
+          <div class="install-step"><span class="num">1</span><span>Tap the <span class="share-pill">${icon('share')} Share</span> button in Safari</span></div>
           <div class="install-step"><span class="num">2</span><span>Scroll down and tap <b>Add to Home Screen</b></span></div>
           <div class="install-step"><span class="num">3</span><span>Tap <b>Add</b> — Shelf opens like a real app</span></div>
         </div>
@@ -130,12 +141,12 @@
     const view = el(`
       <div>
         <div class="app-header">
-          <h1>Shelf</h1>
-          <span class="greeting">Hi, ${esc(state.name)} 👋</span>
+          <h1 class="wordmark">Shelf</h1>
+          <span class="greeting">Hi, ${esc(state.name)}</span>
         </div>
 
         <div class="search-bar">
-          <span class="icon">🔍</span>
+          <span class="icon">${ICON.search}</span>
           <input id="home-search" type="search" inputmode="search"
             placeholder="Search for a book or author…" />
         </div>
@@ -162,7 +173,7 @@
     if (state.books.length === 0) {
       shelf.appendChild(el(`
         <div class="empty">
-          <div class="big">📚</div>
+          <div class="glyph">${ICON.book}</div>
           <h3>No books yet</h3>
           <p>Search above to find a book you've read and add it to your shelf.</p>
         </div>
@@ -199,10 +210,10 @@
     const view = el(`
       <div>
         <div class="navbar">
-          <button class="btn-text back" id="back">‹ Shelf</button>
+          <button class="btn-text back" id="back">${ICON.chevron} Shelf</button>
         </div>
         <div class="search-bar">
-          <span class="icon">🔍</span>
+          <span class="icon">${ICON.search}</span>
           <input id="q" type="search" inputmode="search" placeholder="Search for a book or author…" />
         </div>
         <div id="results"></div>
@@ -259,7 +270,7 @@
       if (books.length === 0) {
         container.appendChild(el(`
           <div class="empty">
-            <div class="big">🔍</div>
+            <div class="glyph">${ICON.search}</div>
             <h3>No results</h3>
             <p>Try a different title or author.</p>
           </div>`));
@@ -276,7 +287,7 @@
       container.innerHTML = '';
       container.appendChild(el(`
         <div class="empty">
-          <div class="big">📡</div>
+          <div class="glyph">${ICON.offline}</div>
           <h3>Couldn't reach the library</h3>
           <p>Check your connection and try again.</p>
         </div>`));
@@ -307,7 +318,7 @@
     const view = el(`
       <div>
         <div class="navbar">
-          <button class="btn-text back" id="back">‹ Back</button>
+          <button class="btn-text back" id="back">${ICON.chevron} Back</button>
           <span id="remove-slot"></span>
         </div>
 
@@ -342,7 +353,7 @@
 
     // Read badge + remove button when already on shelf.
     if (saved) {
-      view.querySelector('#badge-slot').appendChild(el('<span class="read-badge">✓ On your shelf</span>'));
+      view.querySelector('#badge-slot').appendChild(el(`<span class="read-badge">${ICON.check} On your shelf</span>`));
       const remove = el('<button class="btn-text" id="remove" style="color:var(--text-secondary)">Remove</button>');
       remove.addEventListener('click', () => {
         state.books = state.books.filter((b) => b.key !== merged.key);
