@@ -880,22 +880,46 @@
       window.location.reload();
     });
 
+    let swReg = null;
+
+    // Ask a freshly-installed (or already-waiting) worker to take over now.
+    function activateNew(reg) {
+      const nw = reg.installing || reg.waiting;
+      if (!nw) return;
+      if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+        nw.postMessage('SKIP_WAITING');
+      }
+      nw.addEventListener('statechange', () => {
+        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+          nw.postMessage('SKIP_WAITING');
+        }
+      });
+    }
+
+    // Check the server for a newer service worker.
+    function checkForUpdate() {
+      if (swReg) swReg.update().catch(() => {});
+    }
+
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').then((reg) => {
-        // If an updated worker is found, ask it to activate immediately.
-        reg.addEventListener('updatefound', () => {
-          const nw = reg.installing;
-          if (!nw) return;
-          nw.addEventListener('statechange', () => {
-            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-              nw.postMessage('SKIP_WAITING');
-            }
-          });
-        });
-        // Proactively check for a newer version on each load.
-        reg.update();
+        swReg = reg;
+        if (reg.waiting) activateNew(reg);            // an update was already pending
+        reg.addEventListener('updatefound', () => activateNew(reg));
+        checkForUpdate();
       }).catch(() => {});
     });
+
+    // iOS keeps installed PWAs frozen and restores them WITHOUT re-firing
+    // `load`, so re-check for updates whenever the app is brought back to the
+    // foreground. This is what lets a reopened Home Screen app pick up a new
+    // version on its own (network-first means the fresh files are already
+    // available; this triggers the swap + one-time reload into them).
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkForUpdate();
+    });
+    window.addEventListener('pageshow', checkForUpdate);
+    window.addEventListener('online', checkForUpdate);
   }
 
   /* ============================================================
