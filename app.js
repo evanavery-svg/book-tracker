@@ -928,7 +928,7 @@
   function paintVersion() {
     const v = (window.APP_VERSION || '0.0.0');
     const footer = document.getElementById('version-footer');
-    if (footer) footer.textContent = `Shelf · v${v}`;
+    if (footer) footer.textContent = `Shelf · v${v} · © Avery LLC`;
   }
 
   /* ============================================================
