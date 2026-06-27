@@ -328,6 +328,91 @@
     node.appendChild(card);
   }
 
+  /* ---------- Reading charts: pages read + rating distribution ---------- */
+  function paintCharts(node) {
+    node.innerHTML = '';
+    const read = state.books.filter((b) => bookStatus(b) === 'read');
+    const withPages = read.filter((b) => Number(b.pages) > 0 && b.finishedAt);
+    const rated = read.filter((b) => b.rating > 0);
+    const totalPages = withPages.reduce((s, b) => s + Number(b.pages), 0);
+
+    // Nothing meaningful to plot yet.
+    if (!totalPages && !rated.length) return;
+
+    const card = el('<div class="charts-card"></div>');
+
+    /* --- Pages read per month, trailing 12 months (headline = all-time) --- */
+    if (totalPages > 0) {
+      const sums = new Map();
+      withPages.forEach((b) => {
+        const k = b.finishedAt.slice(0, 7);            // YYYY-MM
+        sums.set(k, (sums.get(k) || 0) + Number(b.pages));
+      });
+      const now = new Date();
+      const months = [];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        months.push({
+          pages: sums.get(k) || 0,
+          label: d.toLocaleString(undefined, { month: 'short' }).charAt(0),
+          full: d.toLocaleString(undefined, { month: 'short', year: 'numeric' }),
+          current: i === 0
+        });
+      }
+      const max = Math.max(1, ...months.map((m) => m.pages));
+      const bars = months.map((m) => {
+        const h = m.pages > 0 ? Math.max(6, Math.round((m.pages / max) * 100)) : 0;
+        return `<div class="pg-col" title="${m.full} · ${m.pages} page${m.pages === 1 ? '' : 's'}">
+          <div class="pg-bar-wrap"><div class="pg-bar ${m.current ? 'cur' : ''}" style="height:${h}%"></div></div>
+          <span class="pg-lbl">${m.label}</span>
+        </div>`;
+      }).join('');
+
+      card.appendChild(el(`
+        <div class="chart-block">
+          <div class="chart-head">
+            <span class="mini-eyebrow">${ICON.pages} Pages read</span>
+            <span class="chart-figure">${totalPages.toLocaleString()}</span>
+          </div>
+          <div class="pg-chart">${bars}</div>
+          <div class="chart-foot">Pages finished per month · last 12 months</div>
+        </div>
+      `));
+    }
+
+    /* --- Rating distribution (5★ → 1★) --- */
+    if (rated.length) {
+      if (totalPages > 0) card.appendChild(el('<div class="chart-divider"></div>'));
+      const dist = [0, 0, 0, 0, 0];                    // index 0 = 1 star
+      rated.forEach((b) => { dist[b.rating - 1]++; });
+      const max = Math.max(1, ...dist);
+      const avg = rated.reduce((s, b) => s + b.rating, 0) / rated.length;
+      const rows = [5, 4, 3, 2, 1].map((star) => {
+        const n = dist[star - 1];
+        const w = n > 0 ? Math.max(4, Math.round((n / max) * 100)) : 0;
+        return `<div class="rt-row">
+          <span class="rt-star">${star}<span class="rt-ico">★</span></span>
+          <div class="rt-track"><div class="rt-fill" style="width:${w}%"></div></div>
+          <span class="rt-count">${n}</span>
+        </div>`;
+      }).join('');
+
+      card.appendChild(el(`
+        <div class="chart-block">
+          <div class="chart-head">
+            <span class="mini-eyebrow"><span class="eb-star">★</span> Ratings</span>
+            <span class="chart-figure">${avg.toFixed(1)}<span class="chart-figure-sub">★ avg</span></span>
+          </div>
+          <div class="rt-chart">${rows}</div>
+          <div class="chart-foot">${rated.length} rated book${rated.length === 1 ? '' : 's'}</div>
+        </div>
+      `));
+    }
+
+    node.appendChild(card);
+  }
+
   /* ============================================================
      ROUTING — very small hash-free view switcher
      ============================================================ */
@@ -402,6 +487,7 @@
         <div id="streak"></div>
         <div id="onthisday"></div>
         <div id="insights"></div>
+        <div id="charts"></div>
         <div id="activity"></div>
         <div id="favorites"></div>
 
@@ -429,6 +515,7 @@
     paintStreak(view.querySelector('#streak'));
     paintOnThisDay(view.querySelector('#onthisday'));
     paintInsights(view.querySelector('#insights'));
+    paintCharts(view.querySelector('#charts'));
     paintActivity(view.querySelector('#activity'));
     paintFavorites(view.querySelector('#favorites'));
     paintStats(view.querySelector('#stats'));

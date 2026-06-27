@@ -1185,6 +1185,86 @@ input, textarea { font-family: inherit; color: inherit; }
 }
 .note-add svg { width: 15px; height: 15px; }
 
+/* ---------- Reading charts (pages + ratings) ---------- */
+.charts-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 18px 20px 16px;
+  margin: 18px 0 4px;
+}
+.chart-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.chart-figure {
+  font-family: var(--font-serif);
+  font-size: 25px; font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.chart-figure-sub {
+  font-family: var(--font-sans);
+  font-size: 13px; font-weight: 600;
+  color: var(--text-secondary);
+  margin-left: 3px;
+}
+.chart-foot { font-size: 12px; color: var(--text-tertiary); margin-top: 12px; }
+.chart-divider { height: 1px; background: var(--separator); margin: 20px 0; }
+.eb-star { color: var(--accent); font-size: 15px; line-height: 1; }
+
+/* pages-per-month bars */
+.pg-chart { display: flex; align-items: flex-end; gap: 5px; height: 96px; }
+.pg-col {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 6px; height: 100%; justify-content: flex-end;
+}
+.pg-bar-wrap { width: 100%; flex: 1; display: flex; align-items: flex-end; }
+.pg-bar {
+  width: 100%;
+  background: color-mix(in srgb, var(--accent) 30%, var(--surface-2));
+  border-radius: 4px 4px 2px 2px;
+  transition: height .4s cubic-bezier(.2,.7,.3,1);
+}
+.pg-bar.cur { background: var(--accent); }
+.pg-lbl {
+  font-size: 9.5px; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.02em;
+}
+
+/* rating distribution */
+.rt-chart { display: flex; flex-direction: column; gap: 9px; }
+.rt-row { display: flex; align-items: center; gap: 10px; }
+.rt-star {
+  flex: 0 0 auto; width: 28px;
+  font-size: 13px; font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  display: inline-flex; align-items: center; gap: 2px;
+}
+.rt-ico { color: var(--star); font-size: 11px; }
+.rt-track {
+  flex: 1; height: 9px;
+  border-radius: 980px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--separator);
+  overflow: hidden;
+}
+.rt-fill {
+  height: 100%; border-radius: 980px;
+  background: var(--star); width: 0;
+  transition: width .4s cubic-bezier(.2,.7,.3,1);
+}
+.rt-count {
+  flex: 0 0 auto; min-width: 16px;
+  text-align: right;
+  font-size: 13px; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Reading streak ---------- */
 .streak-card {
   display: flex; align-items: center; gap: 16px;
