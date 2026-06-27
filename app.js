@@ -15,7 +15,7 @@
   const defaultState = {
     name: '',
     books: [],
-    ui: { filter: 'all', sort: 'recent' },
+    ui: { filter: 'all', sort: 'recent', chartColors: { pages: '', rating: '' } },
     goals: { daily: 0, weekly: 0, monthly: 0 }
   };
   let state = loadState();
@@ -123,7 +123,8 @@
     plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
     pages: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5z"/></svg>',
     note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.5h14a1 1 0 0 1 1 1V17l-4 4H6a1 1 0 0 1-1-1z"/><path d="M20 16h-4v4"/><path d="M9 8h7M9 12h5"/></svg>',
-    flame: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.2 2c.7 3.1-1.1 4.8-2.6 6.2C9.1 9.6 8 11 8 12.9a4.2 4.2 0 0 0 8.4.2c0-1.4-.5-2.5-1.1-3.4 1 .3 1.8 1.1 2.2 2.1.4-3.8-1.9-7.3-4.3-9.8z"/></svg>'
+    flame: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.2 2c.7 3.1-1.1 4.8-2.6 6.2C9.1 9.6 8 11 8 12.9a4.2 4.2 0 0 0 8.4.2c0-1.4-.5-2.5-1.1-3.4 1 .3 1.8 1.1 2.2 2.1.4-3.8-1.9-7.3-4.3-9.8z"/></svg>',
+    palette: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 0 0 0 18c1.3 0 2-.9 2-1.9 0-1.1-1-1.7-1-2.7 0-.8.7-1.4 1.5-1.4H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r="1.1" fill="currentColor"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor"/><circle cx="16.5" cy="11" r="1.1" fill="currentColor"/></svg>'
   };
   const icon = (name) => `<span class="ico">${ICON[name] || ''}</span>`;
 
@@ -329,6 +330,9 @@
   }
 
   /* ---------- Reading charts: pages read + rating distribution ---------- */
+  // Preset swatches offered alongside the fully custom picker.
+  const CHART_COLORS = ['#b0573a', '#d99a2b', '#c2873f', '#6f7d5e', '#3f7d6e', '#4f6d7a', '#8a6c8e', '#b5485f'];
+
   function paintCharts(node) {
     node.innerHTML = '';
     const read = state.books.filter((b) => bookStatus(b) === 'read');
@@ -340,6 +344,12 @@
     if (!totalPages && !rated.length) return;
 
     const card = el('<div class="charts-card"></div>');
+
+    // Apply any saved custom colors as CSS variables on the card. The chart CSS
+    // reads these with the theme color as a fallback, so empty = theme default.
+    const cc = Object.assign({ pages: '', rating: '' }, (state.ui && state.ui.chartColors) || {});
+    if (cc.pages) card.style.setProperty('--pg-color', cc.pages);
+    if (cc.rating) card.style.setProperty('--rt-color', cc.rating);
 
     /* --- Pages read per month, trailing 12 months (headline = all-time) --- */
     if (totalPages > 0) {
@@ -409,6 +419,63 @@
         </div>
       `));
     }
+
+    /* --- Custom colors (presets + a full custom picker per chart) --- */
+    const targets = [];
+    if (totalPages > 0) targets.push(['pages', 'Pages', '--pg-color', 'var(--accent)']);
+    if (rated.length) targets.push(['rating', 'Ratings', '--rt-color', 'var(--star)']);
+
+    const tools = el(`
+      <div class="chart-tools">
+        <button class="chart-customize" type="button">${ICON.palette}<span>Customize colors</span></button>
+        <div class="chart-colors" hidden></div>
+      </div>
+    `);
+    const panel = tools.querySelector('.chart-colors');
+
+    targets.forEach(([key, label, cssVar, themeColor]) => {
+      const group = el(`<div class="cc-group"><span class="cc-label">${label}</span><div class="cc-swatches"></div></div>`);
+      const sw = group.querySelector('.cc-swatches');
+
+      const apply = (color) => {
+        cc[key] = color || '';
+        state.ui.chartColors = cc;
+        saveState();
+        if (color) card.style.setProperty(cssVar, color);
+        else card.style.removeProperty(cssVar);
+        sw.querySelectorAll('.cc-swatch').forEach((s) =>
+          s.classList.toggle('on', !s.classList.contains('cc-custom') && (s.dataset.c || '') === (color || '')));
+        const isPreset = !color || CHART_COLORS.includes(color);
+        customWrap.classList.toggle('on', !isPreset);
+        haptic();
+      };
+
+      // Theme default (follows light/dark mode automatically).
+      const def = el(`<button class="cc-swatch cc-default ${!cc[key] ? 'on' : ''}" data-c="" title="Default" type="button" style="background:${themeColor}"></button>`);
+      def.addEventListener('click', () => apply(''));
+      sw.appendChild(def);
+
+      CHART_COLORS.forEach((hex) => {
+        const b = el(`<button class="cc-swatch ${cc[key] === hex ? 'on' : ''}" data-c="${hex}" style="background:${hex}" type="button" aria-label="${hex}"></button>`);
+        b.addEventListener('click', () => apply(hex));
+        sw.appendChild(b);
+      });
+
+      // Fully custom color via the native picker.
+      const startColor = (cc[key] && !CHART_COLORS.includes(cc[key])) ? cc[key] : '#3f7d6e';
+      const customWrap = el(`<label class="cc-swatch cc-custom ${(cc[key] && !CHART_COLORS.includes(cc[key])) ? 'on' : ''}" title="Custom color"><input type="color" value="${startColor}" /></label>`);
+      const inp = customWrap.querySelector('input');
+      inp.addEventListener('input', () => apply(inp.value));
+      sw.appendChild(customWrap);
+
+      panel.appendChild(group);
+    });
+
+    tools.querySelector('.chart-customize').addEventListener('click', () => {
+      panel.hidden = !panel.hidden;
+      haptic();
+    });
+    card.appendChild(tools);
 
     node.appendChild(card);
   }
