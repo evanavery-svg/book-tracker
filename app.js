@@ -341,6 +341,7 @@
     node.classList.add('fade-in');
     APP.appendChild(node);
     window.scrollTo(0, 0);
+    setFooter(false);   // home overrides this immediately after
   }
 
   /* ============================================================
@@ -435,6 +436,7 @@
     paintShelf(view.querySelector('#shelf'));
 
     setView(view);
+    setFooter(true);   // copyright shows on the main page only
   }
 
   /* ============================================================
@@ -1759,10 +1761,12 @@
   /* ============================================================
      VERSION FOOTER
      ============================================================ */
-  function paintVersion() {
+  // The copyright line lives only on the main (home) page; every other view
+  // shows just the version. `home` is true only when called from renderHome.
+  function setFooter(home) {
     const v = (window.APP_VERSION || '0.0.0');
     const footer = document.getElementById('version-footer');
-    if (footer) footer.textContent = `Shelf · v${v} · © Avery LLC`;
+    if (footer) footer.textContent = home ? `Shelf · v${v} · © Avery LLC` : `Shelf · v${v}`;
   }
 
   /* ============================================================
@@ -1826,7 +1830,7 @@
   /* ============================================================
      BOOT
      ============================================================ */
-  paintVersion();
+  setFooter(false);
   registerSW();
   render();
 })();
