@@ -122,7 +122,8 @@
     close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
     pages: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5z"/></svg>',
-    note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.5h14a1 1 0 0 1 1 1V17l-4 4H6a1 1 0 0 1-1-1z"/><path d="M20 16h-4v4"/><path d="M9 8h7M9 12h5"/></svg>'
+    note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.5h14a1 1 0 0 1 1 1V17l-4 4H6a1 1 0 0 1-1-1z"/><path d="M20 16h-4v4"/><path d="M9 8h7M9 12h5"/></svg>',
+    flame: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.2 2c.7 3.1-1.1 4.8-2.6 6.2C9.1 9.6 8 11 8 12.9a4.2 4.2 0 0 0 8.4.2c0-1.4-.5-2.5-1.1-3.4 1 .3 1.8 1.1 2.2 2.1.4-3.8-1.9-7.3-4.3-9.8z"/></svg>'
   };
   const icon = (name) => `<span class="ico">${ICON[name] || ''}</span>`;
 
@@ -397,6 +398,7 @@
         </div>
 
         <div id="goals"></div>
+        <div id="streak"></div>
         <div id="onthisday"></div>
         <div id="insights"></div>
         <div id="activity"></div>
@@ -423,6 +425,7 @@
     });
 
     paintGoals(view.querySelector('#goals'));
+    paintStreak(view.querySelector('#streak'));
     paintOnThisDay(view.querySelector('#onthisday'));
     paintInsights(view.querySelector('#insights'));
     paintActivity(view.querySelector('#activity'));
@@ -608,15 +611,21 @@
     }
     if (reading.length) parts.push(`${reading.length} reading`);
     if (want.length) parts.push(`${want.length} to read`);
+    const pace = readingPace();
+    if (pace && pace.pace >= 1) parts.push(`≈${Math.round(pace.pace)} pages/day`);
     node.textContent = parts.join('  ·  ');
   }
 
   /* ---------- Filter + sort controls ---------- */
   const SORTS = [
     ['recent', 'Recently added'],
+    ['oldest', 'Oldest added'],
     ['rating', 'Highest rated'],
-    ['title', 'Title'],
-    ['author', 'Author']
+    ['title', 'Title (A–Z)'],
+    ['author', 'Author'],
+    ['longest', 'Most pages'],
+    ['shortest', 'Fewest pages'],
+    ['progress', 'Reading progress']
   ];
   function buildControls(node, shelfNode) {
     node.innerHTML = '';
@@ -686,11 +695,26 @@
       const a = Array.isArray(b.author) ? b.author[0] : b.author;
       return (a || '￿').toLowerCase(); // unknown authors sort last
     };
+    const pagesKey = (b) => Number(b.pages) || 0;
+    const progKey = (b) => { const p = bookProgress(b); return p == null ? -1 : p; };
     const sorters = {
       recent: (a, b) => bookTime(b) - bookTime(a),
+      oldest: (a, b) => bookTime(a) - bookTime(b),
       rating: (a, b) => (b.rating || 0) - (a.rating || 0) || bookTime(b) - bookTime(a),
       title: (a, b) => titleKey(a).localeCompare(titleKey(b)),
-      author: (a, b) => authorKey(a).localeCompare(authorKey(b)) || titleKey(a).localeCompare(titleKey(b))
+      author: (a, b) => authorKey(a).localeCompare(authorKey(b)) || titleKey(a).localeCompare(titleKey(b)),
+      // Most pages first; books with no page count fall to the bottom.
+      longest: (a, b) => pagesKey(b) - pagesKey(a) || bookTime(b) - bookTime(a),
+      // Fewest pages first; books with no page count still fall to the bottom.
+      shortest: (a, b) => {
+        const pa = pagesKey(a), pb = pagesKey(b);
+        if (!pa && !pb) return bookTime(b) - bookTime(a);
+        if (!pa) return 1;
+        if (!pb) return -1;
+        return pa - pb || bookTime(b) - bookTime(a);
+      },
+      // Furthest-along reading first; books without progress fall to the bottom.
+      progress: (a, b) => progKey(b) - progKey(a) || bookTime(b) - bookTime(a)
     };
     books.sort(sorters[state.ui.sort] || sorters.recent);
 
@@ -902,6 +926,7 @@
             <h2>${esc(merged.title)}</h2>
             <div class="author">${esc(authorLine(merged.author))}</div>
             ${merged.year ? `<div class="year">First published ${esc(merged.year)}</div>` : ''}
+            ${merged.series ? `<div class="series-line">${esc(merged.series)}${merged.seriesIndex ? ` <span>#${esc(merged.seriesIndex)}</span>` : ''}</div>` : ''}
             ${(() => { const g = genreOf(merged); return g ? `<div class="genre-tag">${esc(g)}</div>` : ''; })()}
             <div id="badge-slot"></div>
           </div>
@@ -948,6 +973,17 @@
               <div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div>
             </div>
             <div class="progress-text" id="progress-text"></div>
+            <div class="pace-hint" id="pace-hint"></div>
+          </div>
+
+          <div id="series-row">
+            <label for="series">${ICON.bookmark} Series</label>
+            <div class="series-edit">
+              <input class="series-name" type="text" id="series" maxlength="60"
+                placeholder="Series name (optional)" value="${esc(merged.series || '')}" />
+              <input class="series-index num-input" type="number" inputmode="numeric" id="series-index"
+                min="0" max="999" placeholder="#" value="${esc(merged.seriesIndex || '')}" />
+            </div>
           </div>
 
           <div id="tags-row">
@@ -971,6 +1007,8 @@
             <button class="btn btn-block" id="save"></button>
           </div>
         </div>
+
+        <div id="series-next"></div>
 
         <h2 class="section-title">You might also like</h2>
         <div id="similar"><div class="spinner"></div></div>
@@ -1015,8 +1053,10 @@
     const currentPageInput = view.querySelector('#current-page');
     const progressFill = view.querySelector('#progress-fill');
     const progressText = view.querySelector('#progress-text');
+    const paceHint = view.querySelector('#pace-hint');
 
-    // Live reading-progress bar from page numbers.
+    // Live reading-progress bar from page numbers, plus a "days left" estimate
+    // based on your personal pace across the books you've finished.
     function updateProgress() {
       const total = Number(pagesInput.value) || 0;
       const cur = Number(currentPageInput.value) || 0;
@@ -1028,6 +1068,14 @@
       } else {
         progressFill.style.width = '0%';
         progressText.textContent = total > 0 ? `of ${total} pages` : '';
+      }
+      const pace = readingPace();
+      if (pace && pace.pace >= 1 && total > 0 && cur > 0 && cur < total) {
+        const days = Math.max(1, Math.ceil((total - cur) / pace.pace));
+        paceHint.textContent = `At your pace (~${Math.round(pace.pace)} pages/day), about ${days} day${days === 1 ? '' : 's'} to finish`;
+        paceHint.style.display = '';
+      } else {
+        paceHint.style.display = 'none';
       }
     }
     pagesInput.addEventListener('input', updateProgress);
@@ -1190,6 +1238,8 @@
         finishedAt: isRead ? (finishedAt || merged.finishedAt || todayISO()) : null,
         pages: Number(pagesInput.value) || merged.pages || null,
         currentPage: currentStatus === 'reading' ? (Number(currentPageInput.value) || null) : null,
+        series: view.querySelector('#series').value.trim() || null,
+        seriesIndex: Number(view.querySelector('#series-index').value) || null,
         tags: tags.slice(),
         notes: notes.slice(),
         favorite: favorite,
@@ -1208,6 +1258,7 @@
       renderHome();
     });
 
+    paintSeriesNext(view.querySelector('#series-next'), merged);
     setView(view);
     loadSimilar(merged, view.querySelector('#similar'));
   }
@@ -1335,6 +1386,148 @@
   }
 
   const miniStars = (n) => `<div class="b-mini-stars">${'★'.repeat(n)}${'☆'.repeat(5 - n)}</div>`;
+
+  /* ---------- Date math (local, DST-safe via midday anchor) ---------- */
+  function addDaysISO(iso, n) {
+    const d = new Date(iso + 'T12:00:00');
+    d.setDate(d.getDate() + n);
+    return isoOf(d);
+  }
+  function dayDiff(a, b) {
+    return Math.round((Date.parse(b + 'T12:00:00') - Date.parse(a + 'T12:00:00')) / 86400000);
+  }
+
+  /* ---------- Reading streak (#1) ---------- */
+  // Distinct days you engaged with a book: started it, finished it, or jotted a
+  // note. Derived from existing data, so it works for books added before this.
+  function readingDays() {
+    const days = new Set();
+    state.books.forEach((b) => {
+      if (b.finishedAt) days.add(b.finishedAt);
+      if (b.startedAt) days.add(b.startedAt);
+      bookNotes(b).forEach((n) => {
+        if (n && n.createdAt) days.add(isoOf(new Date(n.createdAt)));
+      });
+    });
+    return [...days].filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  }
+
+  function streakInfo() {
+    const days = readingDays();
+    if (!days.length) return { current: 0, longest: 0, total: 0 };
+    const set = new Set(days);
+
+    // Longest run of consecutive calendar days, ever.
+    let longest = 1, run = 1;
+    for (let i = 1; i < days.length; i++) {
+      if (dayDiff(days[i - 1], days[i]) === 1) { run++; longest = Math.max(longest, run); }
+      else run = 1;
+    }
+
+    // Current streak counts back from today; yesterday keeps it alive so a
+    // streak doesn't "break" until you've actually missed a full day.
+    let cursor = todayISO();
+    if (!set.has(cursor)) cursor = addDaysISO(todayISO(), -1);
+    let current = 0;
+    if (set.has(cursor)) {
+      current = 1;
+      let prev = addDaysISO(cursor, -1);
+      while (set.has(prev)) { current++; prev = addDaysISO(prev, -1); }
+    }
+    return { current, longest, total: days.length };
+  }
+
+  function paintStreak(node) {
+    node.innerHTML = '';
+    const { current, longest, total } = streakInfo();
+    // Wait for a little history so the card isn't noise.
+    if (total < 3 && current < 2) return;
+    const loggedToday = new Set(readingDays()).has(todayISO());
+
+    const label = current > 0
+      ? (loggedToday ? 'Current reading streak' : 'Streak alive — read today to keep it')
+      : 'No active streak — pick up a book today';
+
+    const card = el(`
+      <div class="streak-card">
+        <div class="streak-flame ${current > 0 ? 'lit' : ''}">${ICON.flame}</div>
+        <div class="streak-main">
+          <div class="streak-num">${current} <span>day${current === 1 ? '' : 's'}</span></div>
+          <div class="streak-label">${label}</div>
+        </div>
+        <div class="streak-best">
+          <div class="streak-best-num">${longest}</div>
+          <div class="streak-best-label">Best</div>
+        </div>
+      </div>
+    `);
+    node.appendChild(card);
+  }
+
+  /* ---------- Reading pace (#5) ---------- */
+  // Median pages-per-day across the books you've finished that have a page
+  // count and both a start and finish date. Median resists the odd outlier
+  // (a book you took a year to finish, or sped through in a night).
+  function readingPace() {
+    const rates = [];
+    state.books.forEach((b) => {
+      if (bookStatus(b) !== 'read') return;
+      const pages = Number(b.pages) || 0;
+      if (!pages || !b.startedAt || !b.finishedAt) return;
+      const span = dayDiff(b.startedAt, b.finishedAt);
+      if (isNaN(span) || span < 0) return;
+      rates.push(pages / Math.max(1, span + 1));   // inclusive of both days
+    });
+    if (!rates.length) return null;
+    rates.sort((a, b) => a - b);
+    const mid = Math.floor(rates.length / 2);
+    const pace = rates.length % 2 ? rates[mid] : (rates[mid - 1] + rates[mid]) / 2;
+    return { pace, samples: rates.length };
+  }
+
+  /* ---------- Book series (#6) ---------- */
+  function seriesSiblings(book) {
+    const name = (book.series || '').trim().toLowerCase();
+    if (!name) return [];
+    return state.books
+      .filter((b) => b.key !== book.key && (b.series || '').trim().toLowerCase() === name)
+      .sort((a, b) => (Number(a.seriesIndex) || 0) - (Number(b.seriesIndex) || 0));
+  }
+
+  // The next book you haven't read in this series — preferring the one whose
+  // index comes right after the current book, else the lowest unread.
+  function nextInSeries(book) {
+    const unread = seriesSiblings(book).filter((b) => bookStatus(b) !== 'read');
+    if (!unread.length) return null;
+    const idx = Number(book.seriesIndex) || 0;
+    const after = unread
+      .filter((b) => (Number(b.seriesIndex) || 0) > idx)
+      .sort((a, b) => (Number(a.seriesIndex) || 0) - (Number(b.seriesIndex) || 0));
+    return after[0] || unread[0];
+  }
+
+  function paintSeriesNext(slot, book) {
+    slot.innerHTML = '';
+    const next = nextInSeries(book);
+    if (!next) return;
+    const sub = `${next.seriesIndex ? '#' + next.seriesIndex + ' · ' : ''}${esc(next.series)}`;
+    const card = el(`
+      <button class="next-series">
+        <div class="mini-eyebrow">${ICON.bookmark} Next in series</div>
+        <div class="ns-body">
+          <div class="ns-cover"></div>
+          <div class="ns-meta">
+            <div class="ns-title">${esc(next.title)}</div>
+            <div class="ns-sub">${sub}</div>
+            <div class="ns-status">${bookStatus(next) === 'reading' ? 'Currently reading' : 'On your want-to-read list'}</div>
+          </div>
+        </div>
+      </button>
+    `);
+    card.querySelector('.ns-cover').appendChild(coverEl(next, 'M'));
+    card.addEventListener('click', () => renderDetail(next, { fromShelf: true }));
+    slot.appendChild(card);
+  }
 
   /* ---------- Favorites row (#7) ---------- */
   function paintFavorites(node) {
