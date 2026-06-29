@@ -16,7 +16,7 @@
     name: '',
     books: [],
     ui: { filter: 'all', sort: 'recent', chartColors: { pages: '', rating: '' } },
-    goals: { daily: 0, weekly: 0, monthly: 0 }
+    goals: { daily: 0, weekly: 0, monthly: 0, pages: 0 }
   };
   let state = loadState();
 
@@ -90,6 +90,38 @@
   // Format a per-day pace number cleanly (e.g. 1, 1.5, 0.3).
   function fmtPace(n) {
     return (Math.round(n * 10) / 10).toString();
+  }
+
+  // Total pages finished within a given calendar year (default: this year).
+  function pagesReadInYear(year) {
+    year = year || new Date().getFullYear();
+    return state.books.reduce((s, b) => {
+      if (bookStatus(b) === 'read' && b.finishedAt && Number(b.pages) > 0 &&
+          Number(b.finishedAt.slice(0, 4)) === year) {
+        return s + Number(b.pages);
+      }
+      return s;
+    }, 0);
+  }
+
+  // Days remaining in the current calendar year, including today.
+  function daysLeftInYear() {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const end = new Date(now.getFullYear(), 11, 31);
+    return Math.max(1, Math.round((end - today) / 86400000) + 1);
+  }
+
+  // A circular progress ring (SVG), normalized so circumference = 100.
+  function progressRingSVG(pct) {
+    const p = Math.max(0, Math.min(100, pct));
+    const dash = `${p.toFixed(1)} ${(100 - p).toFixed(1)}`;
+    return `<svg class="ring" viewBox="0 0 36 36" role="img" aria-label="${Math.round(p)}% of goal">
+      <circle class="ring-track" cx="18" cy="18" r="15.91549431" fill="none" stroke-width="3.4"></circle>
+      <circle class="ring-fill" cx="18" cy="18" r="15.91549431" fill="none" stroke-width="3.4"
+        stroke-dasharray="${dash}" stroke-dashoffset="25" stroke-linecap="round"></circle>
+      <text class="ring-pct" x="18" y="18" text-anchor="middle" dominant-baseline="central">${Math.round(p)}%</text>
+    </svg>`;
   }
 
   /* ---------- Tiny helpers ---------- */
@@ -481,6 +513,212 @@
   }
 
   /* ============================================================
+     YEAR IN REVIEW — a shareable wrap-up of a reading year
+     ============================================================ */
+  // Distinct years that have at least one finished book, newest first.
+  function yearsWithReads() {
+    const ys = new Set();
+    state.books.forEach((b) => {
+      if (bookStatus(b) === 'read' && b.finishedAt) ys.add(Number(b.finishedAt.slice(0, 4)));
+    });
+    return [...ys].filter((y) => !isNaN(y)).sort((a, b) => b - a);
+  }
+
+  function yearStats(year) {
+    const read = state.books.filter((b) =>
+      bookStatus(b) === 'read' && b.finishedAt && Number(b.finishedAt.slice(0, 4)) === year);
+    const pages = read.reduce((s, b) => s + (Number(b.pages) || 0), 0);
+    const rated = read.filter((b) => b.rating > 0);
+    const avg = rated.length ? rated.reduce((s, b) => s + b.rating, 0) / rated.length : 0;
+    const breakdown = genreBreakdown(read);
+    const topGenre = breakdown.length ? breakdown[0][0] : null;
+    const paged = read.filter((b) => Number(b.pages) > 0);
+    const longest = paged.length ? paged.slice().sort((a, b) => Number(b.pages) - Number(a.pages))[0] : null;
+    const topRated = rated.length
+      ? rated.slice().sort((a, b) => b.rating - a.rating || bookTime(b) - bookTime(a))[0] : null;
+    const byMonth = new Array(12).fill(0);
+    read.forEach((b) => { const m = Number(b.finishedAt.slice(5, 7)) - 1; if (m >= 0 && m < 12) byMonth[m]++; });
+    let bestMonthIdx = -1, bestMonthN = 0;
+    byMonth.forEach((n, i) => { if (n > bestMonthN) { bestMonthN = n; bestMonthIdx = i; } });
+    return { year, count: read.length, pages, avg, topGenre, longest, topRated, bestMonthIdx, bestMonthN };
+  }
+
+  // Compact home teaser — only once the current year has some substance.
+  function paintYearReview(node) {
+    node.innerHTML = '';
+    const year = new Date().getFullYear();
+    const st = yearStats(year);
+    if (st.count < 3) return;
+
+    const card = el(`
+      <button class="yr-card">
+        <div class="yr-card-head">
+          <span class="mini-eyebrow">${ICON.calendar} Year in books</span>
+          <span class="yr-card-cta">See your year →</span>
+        </div>
+        <div class="yr-card-stats">
+          <span class="yr-card-year">${year}</span>
+          <span class="yr-chip"><b>${st.count}</b> ${st.count === 1 ? 'book' : 'books'}</span>
+          ${st.pages ? `<span class="yr-chip"><b>${st.pages.toLocaleString()}</b> pages</span>` : ''}
+          ${st.topGenre ? `<span class="yr-chip"><b>${esc(st.topGenre)}</b></span>` : ''}
+        </div>
+      </button>
+    `);
+    card.addEventListener('click', () => renderYearReview(year));
+    node.appendChild(card);
+  }
+
+  function renderYearReview(year) {
+    const years = yearsWithReads();
+    if (!years.length) { renderHome(); return; }
+    year = year || years[0];
+    const st = yearStats(year);
+
+    const view = el(`
+      <div>
+        <div class="navbar">
+          <button class="btn-text back" id="back">${ICON.chevron} Shelf</button>
+          <span class="navbar-actions">
+            <button class="icon-btn" id="yr-share" aria-label="Share your year">${ICON.share}</button>
+          </span>
+        </div>
+        <div class="yr-hero">
+          <div class="yr-hero-eyebrow">Year in Books</div>
+          <h1 class="yr-hero-year">${year}</h1>
+        </div>
+        <div id="yr-years"></div>
+        <div class="yr-grid" id="yr-grid"></div>
+        <div id="yr-top"></div>
+      </div>
+    `);
+    view.querySelector('#back').addEventListener('click', renderHome);
+    view.querySelector('#yr-share').addEventListener('click', () => { haptic(); shareYearCard(st); });
+
+    if (years.length > 1) {
+      const chips = el('<div class="chips yr-year-chips"></div>');
+      years.forEach((y) => {
+        const c = el(`<button class="chip ${y === year ? 'on' : ''}">${y}</button>`);
+        c.addEventListener('click', () => renderYearReview(y));
+        chips.appendChild(c);
+      });
+      view.querySelector('#yr-years').appendChild(chips);
+    }
+
+    const monthName = st.bestMonthIdx >= 0
+      ? new Date(2000, st.bestMonthIdx, 1).toLocaleString(undefined, { month: 'long' }) : '—';
+    const tiles = [
+      ['Books read', String(st.count), st.count === 1 ? 'book' : 'books'],
+      ['Pages read', st.pages ? st.pages.toLocaleString() : '—', 'pages'],
+      ['Average rating', st.avg ? st.avg.toFixed(1) : '—', st.avg ? '★ across rated' : 'no ratings yet'],
+      ['Top genre', st.topGenre || '—', st.topGenre ? 'most read' : ''],
+      ['Busiest month', monthName, st.bestMonthN ? `${st.bestMonthN} finished` : ''],
+      ['Longest book', st.longest ? Number(st.longest.pages).toLocaleString() + 'p' : '—', st.longest ? st.longest.title : '']
+    ];
+    const grid = view.querySelector('#yr-grid');
+    tiles.forEach(([label, value, sub]) => {
+      grid.appendChild(el(`
+        <div class="yr-tile">
+          <div class="yr-tile-label">${esc(label)}</div>
+          <div class="yr-tile-value">${esc(value)}</div>
+          ${sub ? `<div class="yr-tile-sub">${esc(sub)}</div>` : ''}
+        </div>
+      `));
+    });
+
+    if (st.topRated) {
+      const top = el(`
+        <div class="yr-standout">
+          <div class="mini-eyebrow">${ICON.heartFill} Standout of ${year}</div>
+          <button class="yr-standout-card">
+            <div class="yr-standout-cover"></div>
+            <div class="yr-standout-meta">
+              <div class="yr-standout-title">${esc(st.topRated.title)}</div>
+              <div class="yr-standout-author">${esc(authorLine(st.topRated.author))}</div>
+              ${st.topRated.rating ? `<div style="margin-top:6px">${miniStars(st.topRated.rating)}</div>` : ''}
+            </div>
+          </button>
+        </div>
+      `);
+      top.querySelector('.yr-standout-cover').appendChild(coverEl(st.topRated, 'M'));
+      top.querySelector('.yr-standout-card').addEventListener('click', () => renderDetail(st.topRated, { fromShelf: true }));
+      view.querySelector('#yr-top').appendChild(top);
+    }
+
+    setView(view);
+  }
+
+  // Render a 1080×1350 share image summarizing the year.
+  async function shareYearCard(st) {
+    const trunc = (s, n) => (s && s.length > n ? s.slice(0, n - 1).trim() + '…' : (s || ''));
+    try {
+      const W = 1080, H = 1350;
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const g = c.getContext('2d');
+
+      g.fillStyle = '#fbfaf6'; g.fillRect(0, 0, W, H);
+      g.strokeStyle = 'rgba(31,29,26,0.10)'; g.lineWidth = 2;
+      roundRectPath(g, 46, 46, W - 92, H - 92, 36); g.stroke();
+
+      g.textAlign = 'left';
+      g.fillStyle = '#a8a299';
+      g.font = '700 30px Georgia, "Times New Roman", serif';
+      g.fillText('Y E A R   I N   B O O K S', 100, 152);
+      g.fillStyle = '#b0573a';
+      g.font = '700 150px Georgia, "Times New Roman", serif';
+      g.fillText(String(st.year), 92, 300);
+
+      const rows = [
+        [String(st.count), st.count === 1 ? 'book read' : 'books read'],
+        [st.pages ? st.pages.toLocaleString() : '—', 'pages turned'],
+        [st.avg ? st.avg.toFixed(1) + '★' : '—', 'average rating'],
+        [st.topGenre || '—', 'most-read genre']
+      ];
+      let y = 470;
+      rows.forEach(([val, label]) => {
+        g.fillStyle = '#1f1d1a';
+        g.font = '700 88px Georgia, "Times New Roman", serif';
+        g.fillText(trunc(val, 16), 100, y);
+        g.fillStyle = '#76716a';
+        g.font = '400 34px Georgia, "Times New Roman", serif';
+        g.fillText(label, 104, y + 44);
+        y += 168;
+      });
+
+      if (st.topRated) {
+        g.fillStyle = '#a8a299';
+        g.font = '700 26px Georgia, "Times New Roman", serif';
+        g.fillText('S T A N D O U T', 100, y - 6);
+        g.fillStyle = '#b0573a';
+        g.font = 'italic 700 46px Georgia, "Times New Roman", serif';
+        g.fillText(trunc(st.topRated.title, 26), 100, y + 48);
+      }
+
+      g.textAlign = 'center';
+      g.fillStyle = '#aaa49a';
+      g.font = '700 32px Georgia, "Times New Roman", serif';
+      g.fillText('S H E L F', W / 2, H - 86);
+
+      const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
+      const file = new File([blob], `shelf-${st.year}.png`, { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: `My ${st.year} in books` });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `shelf-${st.year}.png`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        toast('Saved your year image ✓');
+      }
+    } catch (_) {
+      const text = `In ${st.year} I read ${st.count} ${st.count === 1 ? 'book' : 'books'} on Shelf.`;
+      if (navigator.share) navigator.share({ title: `My ${st.year} in books`, text }).catch(() => {});
+      else toast(`${st.count} ${st.count === 1 ? 'book' : 'books'} in ${st.year}`);
+    }
+  }
+
+  /* ============================================================
      ROUTING — very small hash-free view switcher
      ============================================================ */
   function render() {
@@ -555,6 +793,7 @@
         <div id="onthisday"></div>
         <div id="insights"></div>
         <div id="charts"></div>
+        <div id="yearreview"></div>
         <div id="activity"></div>
         <div id="favorites"></div>
 
@@ -583,6 +822,7 @@
     paintOnThisDay(view.querySelector('#onthisday'));
     paintInsights(view.querySelector('#insights'));
     paintCharts(view.querySelector('#charts'));
+    paintYearReview(view.querySelector('#yearreview'));
     paintActivity(view.querySelector('#activity'));
     paintFavorites(view.querySelector('#favorites'));
     paintStats(view.querySelector('#stats'));
@@ -625,27 +865,54 @@
   function paintGoals(node) {
     node.innerHTML = '';
     const active = GOAL_PERIODS.filter(([key]) => state.goals[key] > 0);
+    const pagesGoal = state.goals.pages || 0;
+    const hasAny = active.length > 0 || pagesGoal > 0;
 
     const card = el('<div class="goals-card"></div>');
     const head = el(`
       <div class="goals-head">
         <span class="goals-title">${ICON.target} Reading Goals</span>
-        <button class="btn-text goals-edit">${active.length ? 'Edit' : ''}</button>
+        <button class="btn-text goals-edit">${hasAny ? 'Edit' : ''}</button>
       </div>
     `);
     head.querySelector('.goals-edit').addEventListener('click', renderGoals);
     card.appendChild(head);
 
-    if (active.length === 0) {
+    if (!hasAny) {
       const empty = el(`
         <div class="goals-empty">
-          <p>Set a daily, weekly, or monthly goal to keep your reading on pace.</p>
+          <p>Set a daily, weekly, monthly, or yearly pages goal to keep your reading on pace.</p>
           <button class="btn goals-set">Set a Goal</button>
         </div>
       `);
       empty.querySelector('.goals-set').addEventListener('click', renderGoals);
       card.appendChild(empty);
     } else {
+      // Annual pages goal — shown first, with a circular progress ring.
+      if (pagesGoal > 0) {
+        const year = new Date().getFullYear();
+        const done = pagesReadInYear(year);
+        const remaining = Math.max(0, pagesGoal - done);
+        const pct = Math.max(0, Math.min(1, done / pagesGoal));
+        let paceText;
+        if (remaining === 0) {
+          paceText = `Goal reached 🎉 · ${done.toLocaleString()} pages in ${year}`;
+        } else {
+          const perDay = Math.ceil(remaining / daysLeftInYear());
+          paceText = `${remaining.toLocaleString()} to go · ≈${perDay.toLocaleString()} pages/day to Dec 31`;
+        }
+        const row = el(`
+          <div class="goal-pages-row ${remaining === 0 ? 'reached' : ''}">
+            <div class="ring-wrap">${progressRingSVG(pct * 100)}</div>
+            <div class="goal-pages-meta">
+              <span class="goal-label">Pages this year</span>
+              <span class="goal-count">${done.toLocaleString()} / ${pagesGoal.toLocaleString()} pages</span>
+              <span class="goal-pace">${paceText}</span>
+            </div>
+          </div>
+        `);
+        card.appendChild(row);
+      }
       active.forEach(([key, , unit]) => {
         const goal = state.goals[key];
         const { start, end, label } = periodBounds(key);
@@ -680,6 +947,7 @@
         <h2 class="section-title" style="margin-top:6px">Reading Goals</h2>
         <p class="hint" style="margin:-8px 2px 20px">Set how many books you'd like to finish. We'll show the daily pace you need to stay on track.</p>
         <div id="goal-fields"></div>
+        <div id="pages-goal-field"></div>
         <div class="detail-actions" style="margin-top:24px">
           <button class="btn btn-block" id="save-goals">Save Goals</button>
         </div>
@@ -741,10 +1009,59 @@
       fields.appendChild(field);
     });
 
+    // Annual pages goal — a free number with handy presets, since page
+    // targets are in the thousands and a +/- stepper would be tedious.
+    const year = new Date().getFullYear();
+    const PAGE_PRESETS = [3000, 6000, 12000, 24000];
+    const pagesField = el(`
+      <div class="goal-field goal-field-pages">
+        <div class="goal-field-label">Annual pages</div>
+        <div class="goal-field-sub">pages to read in ${year}</div>
+        <input class="field pages-goal-input" id="pages-goal" type="number" inputmode="numeric"
+          min="0" max="500000" placeholder="e.g. 12000" value="${draft.pages || ''}" />
+        <div class="pages-presets">
+          ${PAGE_PRESETS.map((p) => `<button class="page-preset" type="button" data-p="${p}">${p.toLocaleString()}</button>`).join('')}
+        </div>
+        <div class="goal-field-pace" id="pages-pace"></div>
+      </div>
+    `);
+    const pagesInput = pagesField.querySelector('#pages-goal');
+    const pagesPace = pagesField.querySelector('#pages-pace');
+    const refreshPagesPace = () => {
+      const goal = draft.pages || 0;
+      if (!goal) { pagesPace.style.display = 'none'; return; }
+      const done = pagesReadInYear(year);
+      const remaining = Math.max(0, goal - done);
+      if (remaining === 0) {
+        pagesPace.textContent = `Already reached — ${done.toLocaleString()} pages this year.`;
+      } else {
+        const perDay = Math.ceil(remaining / daysLeftInYear());
+        pagesPace.textContent = `${done.toLocaleString()} so far · ≈${perDay.toLocaleString()} pages/day to reach ${goal.toLocaleString()} by Dec 31.`;
+      }
+      pagesPace.style.display = '';
+    };
+    pagesInput.addEventListener('input', () => {
+      draft.pages = Math.max(0, Math.min(500000, parseInt(pagesInput.value, 10) || 0));
+      pagesField.querySelectorAll('.page-preset').forEach((b) =>
+        b.classList.toggle('on', Number(b.dataset.p) === draft.pages));
+      refreshPagesPace();
+    });
+    pagesField.querySelectorAll('.page-preset').forEach((b) => {
+      b.classList.toggle('on', Number(b.dataset.p) === (draft.pages || 0));
+      b.addEventListener('click', () => {
+        draft.pages = Number(b.dataset.p);
+        pagesInput.value = draft.pages;
+        pagesField.querySelectorAll('.page-preset').forEach((x) => x.classList.toggle('on', x === b));
+        refreshPagesPace();
+      });
+    });
+    refreshPagesPace();
+    view.querySelector('#pages-goal-field').appendChild(pagesField);
+
     view.querySelector('#save-goals').addEventListener('click', () => {
       state.goals = draft;
       saveState();
-      const any = draft.daily || draft.weekly || draft.monthly;
+      const any = draft.daily || draft.weekly || draft.monthly || draft.pages;
       toast(any ? 'Goals saved ✓' : 'Goals cleared');
       renderHome();
     });

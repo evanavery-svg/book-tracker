@@ -1402,6 +1402,155 @@ input, textarea { font-family: inherit; color: inherit; }
 .ns-sub { font-size: 13px; color: var(--text-secondary); margin-top: 3px; }
 .ns-status { font-size: 12px; color: var(--accent); font-weight: 600; margin-top: 4px; }
 
+/* ---------- Annual pages goal (ring row in goals card) ---------- */
+.goal-pages-row {
+  display: flex; align-items: center; gap: 16px;
+  padding: 8px 0 6px;
+  margin-bottom: 4px;
+}
+.goal-pages-row + .goal-row { border-top: 1px solid var(--separator); margin-top: 12px; padding-top: 16px; }
+.ring-wrap { flex: 0 0 auto; width: 64px; height: 64px; }
+.ring { width: 64px; height: 64px; transform: rotate(0deg); }
+.ring-track { stroke: var(--surface-2); }
+.ring-fill { stroke: var(--accent); transition: stroke-dasharray .5s cubic-bezier(.2,.7,.3,1); }
+.ring-pct {
+  font-size: 9px; font-weight: 700;
+  fill: var(--text);
+  font-family: var(--font-sans);
+}
+.goal-pages-row.reached .ring-fill { stroke: var(--star); }
+.goal-pages-meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.goal-pages-row .goal-count { font-size: 14px; }
+.goal-pages-row .goal-pace { margin-top: 2px; }
+.goal-pages-row.reached .goal-pace { color: var(--star); font-weight: 500; }
+
+/* ---------- Goals editor: annual pages field ---------- */
+.goal-field-pages .pages-goal-input {
+  margin-top: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.pages-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.page-preset {
+  border: none;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--separator);
+  color: var(--text-secondary);
+  border-radius: 980px;
+  padding: 7px 14px;
+  font-size: 13.5px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: transform .12s ease;
+}
+.page-preset:active { transform: scale(0.95); }
+.page-preset.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px transparent;
+}
+
+/* ---------- Year in Review ---------- */
+.yr-card {
+  display: block; width: 100%; text-align: left;
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 16px 20px 18px;
+  margin: 18px 0 4px;
+  color: var(--text);
+  background:
+    radial-gradient(120% 140% at 100% 0%, var(--accent-soft), transparent 60%),
+    var(--surface);
+  transition: transform .14s ease;
+}
+.yr-card:active { transform: scale(0.99); }
+.yr-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+}
+.yr-card-cta { font-size: 13px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+.yr-card-stats { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 10px; margin-top: 14px; }
+.yr-card-year {
+  font-family: var(--font-serif);
+  font-size: 30px; font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-right: 4px;
+}
+.yr-chip {
+  font-size: 13px; color: var(--text-secondary);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--separator);
+  border-radius: 980px;
+  padding: 5px 11px;
+}
+.yr-chip b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* full review page */
+.yr-hero { margin: 8px 2px 18px; }
+.yr-hero-eyebrow {
+  font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.yr-hero-year {
+  font-family: var(--font-serif);
+  font-size: 64px; font-weight: 600;
+  letter-spacing: -0.02em; line-height: 1;
+  margin-top: 6px;
+}
+.yr-year-chips { margin: 0 0 18px; }
+.yr-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.yr-tile {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--separator);
+  padding: 16px 16px 18px;
+  min-width: 0;
+}
+.yr-tile-label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+}
+.yr-tile-value {
+  font-family: var(--font-serif);
+  font-size: 28px; font-weight: 600;
+  letter-spacing: -0.01em; line-height: 1.1;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+.yr-tile-sub {
+  font-size: 12.5px; color: var(--text-secondary);
+  margin-top: 5px;
+  overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.yr-standout { margin-top: 18px; }
+.yr-standout-card {
+  display: flex; align-items: center; gap: 16px;
+  width: 100%; text-align: left;
+  border: none;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 16px 18px;
+  margin-top: 12px;
+  transition: transform .14s ease;
+}
+.yr-standout-card:active { transform: scale(0.99); }
+.yr-standout-cover { flex: 0 0 60px; }
+.yr-standout-cover .cover { width: 60px; }
+.yr-standout-meta { min-width: 0; }
+.yr-standout-title {
+  font-family: var(--font-serif);
+  font-size: 19px; font-weight: 600;
+  line-height: 1.2; letter-spacing: -0.01em;
+}
+.yr-standout-author { font-size: 13.5px; color: var(--text-secondary); margin-top: 3px; }
+
 /* ---------- Motion ---------- */
 .fade-in { animation: rise .32s cubic-bezier(.2,.7,.3,1); }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
