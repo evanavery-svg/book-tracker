@@ -15,7 +15,7 @@
   const defaultState = {
     name: '',
     books: [],
-    ui: { filter: 'all', sort: 'recent', chartColors: { pages: '', rating: '' } },
+    ui: { filter: 'all', sort: 'recent', chartColors: { pages: '', rating: '' }, theme: '' },
     goals: { daily: 0, weekly: 0, monthly: 0, pages: 0 }
   };
   let state = loadState();
@@ -36,6 +36,34 @@
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
   }
   function findBook(key) { return state.books.find((b) => b.key === key); }
+
+  /* ---------- Theme (Auto / Light / Dark) ---------- */
+  // '' = follow the system; 'light' / 'dark' force a look. The CSS pairs
+  // [data-theme="dark"] with the prefers-color-scheme block, and
+  // [data-theme="light"] opts out of the media query.
+  function applyTheme() {
+    const t = (state.ui && state.ui.theme) || '';
+    if (t) document.documentElement.setAttribute('data-theme', t);
+    else document.documentElement.removeAttribute('data-theme');
+    // Keep the browser/status-bar chrome in step with the page background.
+    const dark = t === 'dark' ||
+      (!t && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', dark ? '#100f0d' : '#faf8f4');
+  }
+  if (window.matchMedia) {
+    // In Auto, follow live system changes (sunset, etc.).
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+  }
+
+  // Greeting that follows the clock instead of a flat "Hi".
+  function greeting() {
+    const h = new Date().getHours();
+    if (h < 5) return 'Up late';
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
 
   // Status is one of 'want' | 'reading' | 'read'. Books saved before these
   // existed (no status field) are treated as read.
@@ -156,7 +184,13 @@
     pages: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5z"/></svg>',
     note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.5h14a1 1 0 0 1 1 1V17l-4 4H6a1 1 0 0 1-1-1z"/><path d="M20 16h-4v4"/><path d="M9 8h7M9 12h5"/></svg>',
     flame: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.2 2c.7 3.1-1.1 4.8-2.6 6.2C9.1 9.6 8 11 8 12.9a4.2 4.2 0 0 0 8.4.2c0-1.4-.5-2.5-1.1-3.4 1 .3 1.8 1.1 2.2 2.1.4-3.8-1.9-7.3-4.3-9.8z"/></svg>',
-    palette: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 0 0 0 18c1.3 0 2-.9 2-1.9 0-1.1-1-1.7-1-2.7 0-.8.7-1.4 1.5-1.4H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r="1.1" fill="currentColor"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor"/><circle cx="16.5" cy="11" r="1.1" fill="currentColor"/></svg>'
+    palette: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 0 0 0 18c1.3 0 2-.9 2-1.9 0-1.1-1-1.7-1-2.7 0-.8.7-1.4 1.5-1.4H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r="1.1" fill="currentColor"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor"/><circle cx="16.5" cy="11" r="1.1" fill="currentColor"/></svg>',
+    gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13.5a1.6 1.6 0 0 0 .4 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.6 1.6 0 0 0-1.8-.4 1.6 1.6 0 0 0-1 1.5v.2a2 2 0 1 1-4.1 0v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.4l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.6 1.6 0 0 0 .4-1.8 1.6 1.6 0 0 0-1.5-1h-.2a2 2 0 1 1 0-4.1h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.4-1.8l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.6 1.6 0 0 0 1.8.4 1.6 1.6 0 0 0 1-1.5v-.2a2 2 0 1 1 4.1 0v.2a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.4l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.6 1.6 0 0 0-.4 1.8 1.6 1.6 0 0 0 1.5 1h.2a2 2 0 1 1 0 4.1h-.2a1.6 1.6 0 0 0-1.5 1z"/></svg>',
+    quote: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.5 5C6.5 6.5 4.5 9 4.5 12.5V19h6.6v-6.6H7.3c0-2.2 1-3.9 3.2-5z"/><path d="M19.5 5c-3 1.5-5 4-5 7.5V19h6.6v-6.6h-3.8c0-2.2 1-3.9 3.2-5z"/></svg>',
+    download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/></svg>',
+    upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M5 19h14"/></svg>',
+    sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3L5 19"/></svg>',
+    moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/></svg>'
   };
   const icon = (name) => `<span class="ico">${ICON[name] || ''}</span>`;
 
@@ -719,6 +753,246 @@
   }
 
   /* ============================================================
+     HIGHLIGHTS — every note you've saved, in one place
+     ============================================================ */
+  // All notes across the shelf, paired with their book, newest first.
+  function allNotes() {
+    const out = [];
+    state.books.forEach((b) => bookNotes(b).forEach((n) => {
+      if (n && n.text) out.push({ book: b, note: n });
+    }));
+    return out.sort((a, b) => (b.note.createdAt || 0) - (a.note.createdAt || 0));
+  }
+
+  // Home card: one saved line, rotating daily, as a doorway to the feed.
+  function paintHighlight(node) {
+    node.innerHTML = '';
+    const notes = allNotes();
+    if (!notes.length) return;
+    const day = Math.floor(Date.parse(todayISO()) / 86400000);
+    const { book, note } = notes[day % notes.length];
+    const text = note.text.length > 180 ? note.text.slice(0, 180).trim() + '…' : note.text;
+
+    const card = el(`
+      <button class="hl-card">
+        <div class="hl-head">
+          <span class="mini-eyebrow">${ICON.quote} A line you saved</span>
+          <span class="hl-count">${notes.length} ${notes.length === 1 ? 'note' : 'notes'} →</span>
+        </div>
+        <blockquote class="hl-quote">“${esc(text)}”</blockquote>
+        <div class="hl-source">${esc(book.title)}${note.page ? ` · p.${esc(note.page)}` : ''}</div>
+      </button>
+    `);
+    card.addEventListener('click', renderHighlights);
+    node.appendChild(card);
+  }
+
+  function renderHighlights() {
+    const notes = allNotes();
+    const view = el(`
+      <div>
+        <div class="navbar">
+          <button class="btn-text back" id="back">${ICON.chevron} Shelf</button>
+        </div>
+        <h2 class="section-title" style="margin-top:6px">Highlights</h2>
+        <p class="hint" style="margin:-8px 2px 20px">${notes.length} ${notes.length === 1 ? 'note' : 'notes'} saved across your shelf. Tap one to revisit the book.</p>
+        <div id="hl-list"></div>
+      </div>
+    `);
+    view.querySelector('#back').addEventListener('click', renderHome);
+    const list = view.querySelector('#hl-list');
+
+    if (!notes.length) {
+      list.appendChild(el(`
+        <div class="empty">
+          <div class="glyph">${ICON.note}</div>
+          <h3>No notes yet</h3>
+          <p>Open a book and save a quote or a thought — it will show up here.</p>
+        </div>`));
+    }
+
+    // Group by book (books with the freshest note first); within a book,
+    // notes read in page order like flipping back through it.
+    const groups = new Map();
+    notes.forEach(({ book, note }) => {
+      if (!groups.has(book.key)) groups.set(book.key, { book, items: [] });
+      groups.get(book.key).items.push(note);
+    });
+    groups.forEach(({ book, items }) => {
+      list.appendChild(el(`<div class="hl-book">${esc(book.title)} <span>${esc(authorLine(book.author))}</span></div>`));
+      items
+        .slice()
+        .sort((a, b) => (a.page || 0) - (b.page || 0) || (a.createdAt || 0) - (b.createdAt || 0))
+        .forEach((note) => {
+          const when = note.createdAt
+            ? new Date(note.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+          const item = el(`
+            <button class="hl-item">
+              <blockquote class="hl-quote">“${esc(note.text)}”</blockquote>
+              <div class="hl-item-foot">
+                ${note.page ? `<span>Page ${esc(note.page)}</span>` : '<span></span>'}
+                <span>${when}</span>
+              </div>
+            </button>
+          `);
+          item.addEventListener('click', () => renderDetail(book, { fromShelf: true }));
+          list.appendChild(item);
+        });
+    });
+
+    setView(view);
+  }
+
+  /* ============================================================
+     SETTINGS — name, appearance, backup & restore
+     ============================================================ */
+  function exportBackup() {
+    const payload = {
+      app: 'shelf',
+      version: window.APP_VERSION || '0.0.0',
+      exportedAt: new Date().toISOString(),
+      state: state
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `shelf-backup-${todayISO()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    haptic();
+    toast('Backup downloaded ✓');
+  }
+
+  function importBackup(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        // Accept both the wrapped export format and a raw state object.
+        const incoming = data && data.app === 'shelf' && data.state ? data.state : data;
+        if (!incoming || !Array.isArray(incoming.books)) throw new Error('bad');
+        const when = data.exportedAt ? ` from ${formatDate(data.exportedAt.slice(0, 10))}` : '';
+        const ok = confirm(
+          `Restore backup${when}?\n\n` +
+          `Backup: ${incoming.books.length} ${incoming.books.length === 1 ? 'book' : 'books'}\n` +
+          `Current shelf: ${state.books.length} ${state.books.length === 1 ? 'book' : 'books'}\n\n` +
+          `This replaces everything on this device.`
+        );
+        if (!ok) return;
+        const s = Object.assign({}, defaultState, incoming);
+        s.ui = Object.assign({}, defaultState.ui, incoming.ui);
+        s.goals = Object.assign({}, defaultState.goals, incoming.goals);
+        state = s;
+        saveState();
+        applyTheme();
+        toast('Shelf restored ✓');
+        renderHome();
+      } catch (_) {
+        toast("That file doesn't look like a Shelf backup");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function renderSettings() {
+    const noteCount = allNotes().length;
+    const view = el(`
+      <div>
+        <div class="navbar">
+          <button class="btn-text back" id="back">${ICON.chevron} Shelf</button>
+        </div>
+        <h2 class="section-title" style="margin-top:6px">Settings</h2>
+
+        <div class="set-card">
+          <label class="set-label" for="set-name">Your name</label>
+          <input class="field" id="set-name" type="text" maxlength="40" value="${esc(state.name)}" />
+        </div>
+
+        <div class="set-card">
+          <div class="set-label">Appearance</div>
+          <div class="status-toggle status-toggle-3" id="theme-toggle">
+            <button class="status-btn" data-t="">Auto</button>
+            <button class="status-btn" data-t="light">${ICON.sun} Light</button>
+            <button class="status-btn" data-t="dark">${ICON.moon} Dark</button>
+          </div>
+          <p class="set-sub">Auto follows your device's light and dark setting.</p>
+        </div>
+
+        <div class="set-card">
+          <div class="set-label">Backup</div>
+          <p class="set-sub" style="margin-top:2px">Your shelf lives only on this device. Keep a copy safe or move it to a new phone.</p>
+          <div class="set-actions">
+            <button class="btn btn-secondary set-btn" id="do-export">${ICON.download} Export backup</button>
+            <button class="btn btn-secondary set-btn" id="do-import">${ICON.upload} Restore backup</button>
+            <input type="file" id="import-file" accept=".json,application/json" hidden />
+          </div>
+          <p class="set-meta">${state.books.length} ${state.books.length === 1 ? 'book' : 'books'} · ${noteCount} ${noteCount === 1 ? 'note' : 'notes'} on this device</p>
+        </div>
+
+        <div class="set-card">
+          <div class="set-label">Danger zone</div>
+          <div class="set-actions">
+            <button class="btn-text set-danger" id="do-erase">Erase all data…</button>
+          </div>
+        </div>
+
+      </div>
+    `);
+    view.querySelector('#back').addEventListener('click', renderHome);
+
+    // Name — commit on blur or Enter.
+    const nameInput = view.querySelector('#set-name');
+    const commitName = () => {
+      const v = nameInput.value.trim();
+      if (v && v !== state.name) {
+        state.name = v; saveState();
+        toast('Name updated ✓');
+      } else if (!v) {
+        nameInput.value = state.name;
+      }
+    };
+    nameInput.addEventListener('blur', commitName);
+    nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { commitName(); nameInput.blur(); } });
+
+    // Appearance
+    const themeToggle = view.querySelector('#theme-toggle');
+    const paintThemeBtns = () => themeToggle.querySelectorAll('.status-btn').forEach((b) =>
+      b.classList.toggle('on', (b.dataset.t || '') === (state.ui.theme || '')));
+    themeToggle.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-t]');
+      if (!btn) return;
+      state.ui.theme = btn.dataset.t || '';
+      saveState();
+      applyTheme();
+      paintThemeBtns();
+      haptic();
+    });
+    paintThemeBtns();
+
+    // Backup
+    view.querySelector('#do-export').addEventListener('click', exportBackup);
+    const fileInput = view.querySelector('#import-file');
+    view.querySelector('#do-import').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files && fileInput.files[0]) importBackup(fileInput.files[0]);
+      fileInput.value = '';
+    });
+
+    // Erase
+    view.querySelector('#do-erase').addEventListener('click', () => {
+      if (!confirm(`Erase everything? This removes all ${state.books.length} books, notes, and goals from this device.`)) return;
+      if (!confirm('Really erase? There is no undo — export a backup first if unsure.')) return;
+      localStorage.removeItem(STORE_KEY);
+      state = JSON.parse(JSON.stringify(defaultState));
+      applyTheme();
+      toast('All data erased');
+      render();
+    });
+
+    setView(view);
+  }
+
+  /* ============================================================
      ROUTING — very small hash-free view switcher
      ============================================================ */
   function render() {
@@ -779,7 +1053,10 @@
       <div>
         <div class="app-header">
           <h1 class="wordmark">Shelf</h1>
-          <span class="greeting">Hi, ${esc(state.name)}</span>
+          <span class="header-side">
+            <span class="greeting">${greeting()}, ${esc(state.name)}</span>
+            <button class="icon-btn header-gear" id="open-settings" aria-label="Settings">${ICON.gear}</button>
+          </span>
         </div>
 
         <div class="search-bar">
@@ -796,6 +1073,7 @@
         <div id="yearreview"></div>
         <div id="activity"></div>
         <div id="favorites"></div>
+        <div id="highlight"></div>
 
         <h2 class="section-title">Your Shelf</h2>
         <p class="shelf-stats" id="stats"></p>
@@ -825,7 +1103,9 @@
     paintYearReview(view.querySelector('#yearreview'));
     paintActivity(view.querySelector('#activity'));
     paintFavorites(view.querySelector('#favorites'));
+    paintHighlight(view.querySelector('#highlight'));
     paintStats(view.querySelector('#stats'));
+    view.querySelector('#open-settings').addEventListener('click', renderSettings);
     buildControls(view.querySelector('#controls'), view.querySelector('#shelf'));
     paintShelf(view.querySelector('#shelf'));
 
@@ -2301,6 +2581,7 @@
   /* ============================================================
      BOOT
      ============================================================ */
+  applyTheme();
   setFooter(false);
   registerSW();
   render();
